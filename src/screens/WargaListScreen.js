@@ -1,0 +1,401 @@
+import React, { useState } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+  RefreshControl,
+  ScrollView
+} from 'react-native'
+import {
+  Users,
+  Search,
+  Plus,
+  Phone,
+  Home,
+  X
+} from 'lucide-react-native'
+import { useApp } from '../context/AppContext'
+import TopAppBar from '../components/TopAppBar'
+import AppCard from '../components/AppCard'
+import AppBadge from '../components/AppBadge'
+import { colors, typography, spacing, radius, shadows } from '../utils/theme'
+
+export default function WargaListScreen({ navigation }) {
+  const { scopedWarga, isAdminLoggedIn, refreshData, refreshing, tagihan } = useApp()
+  const [search, setSearch] = useState('')
+  const [selectedBlok, setSelectedBlok] = useState('Semua')
+
+  const currentMonth = new Date().getMonth() + 1
+  const currentYear = new Date().getFullYear()
+
+  // Dynamic bloks
+  const existingBloks = Array.from(
+    new Set(scopedWarga.map((w) => (w.blok || '').toUpperCase()).filter(Boolean))
+  ).sort()
+  const bloks = ['Semua', ...existingBloks.map((b) => `Blok ${b}`)]
+
+  const filteredWarga = scopedWarga.filter((w) => {
+    if (selectedBlok !== 'Semua') {
+      const blokChar = selectedBlok.replace('Blok ', '').toUpperCase()
+      if ((w.blok || '').toUpperCase() !== blokChar) return false
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      const matchName = (w.nama || '').toLowerCase().includes(q)
+      const matchBlok = `${w.blok || ''}/${w.noRumah || ''}`.toLowerCase().includes(q)
+      const matchHp = (w.noHp || '').includes(q)
+      const matchKode = (w.kodeUnik && String(w.kodeUnik).includes(q.replace('#', '')))
+      const matchNik = w.nik && w.nik.includes(q)
+      const matchKk = w.noKk && w.noKk.includes(q)
+      const matchPekerjaan = (w.pekerjaan || '').toLowerCase().includes(q)
+      return matchName || matchBlok || matchHp || matchKode || matchNik || matchKk || matchPekerjaan
+    }
+    return true
+  })
+
+  const renderWargaItem = ({ item }) => {
+    const bill = tagihan.find(
+      (t) =>
+        (t.wargaId === item.id || (t.namaWarga && t.namaWarga === item.nama)) &&
+        Number(t.bulan) === currentMonth &&
+        Number(t.tahun) === currentYear
+    )
+
+    const isPaid = bill?.status === 'Lunas'
+    const isPending = bill?.status === 'Menunggu Verifikasi'
+    const statusText = !bill
+      ? 'Belum Terbit'
+      : isPaid
+      ? 'IPL Lunas'
+      : isPending
+      ? 'Menunggu'
+      : 'Belum Bayar'
+
+    const isPendingApproval = item.statusApproval === 'Menunggu Verifikasi'
+
+    return (
+      <AppCard
+        style={[styles.card, isPendingApproval && { borderColor: '#93C5FD', backgroundColor: '#F8FAFC' }]}
+        onPress={() => navigation.navigate('DetailWarga', { warga: item })}
+      >
+        <View style={styles.cardLeft}>
+          <View style={[styles.avatarWrap, isPendingApproval && { backgroundColor: '#DBEAFE' }]}>
+            <Text style={[styles.avatarText, isPendingApproval && { color: '#1D4ED8' }]}>
+              {(item.nama || 'W').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.infoCol}>
+            <Text style={styles.wargaNama} numberOfLines={1}>{item.nama}</Text>
+            <View style={styles.addressRow}>
+              <Home size={12} color={colors.textSecondary} />
+              <Text style={styles.wargaAlamat} numberOfLines={1}>
+                Blok {item.blok || 'A'} No. {item.noRumah || '-'} • #{item.kodeUnik || '101'}
+              </Text>
+            </View>
+            {item.noHp ? (
+              <View style={styles.phoneRow}>
+                <Phone size={12} color={colors.success} />
+                <Text style={styles.wargaPhone} numberOfLines={1}>{item.noHp}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.cardRight}>
+          {isPendingApproval ? (
+            <AppBadge status="pending" label="Butuh ACC" />
+          ) : (
+            <AppBadge status={statusText} label={statusText} />
+          )}
+
+          <View
+            style={[
+              styles.statusHuniBadge,
+              item.statusHuni === 'Kontrak' ? styles.badgeKontrak : styles.badgeTetap
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusHuniText,
+                item.statusHuni === 'Kontrak' ? styles.textKontrak : styles.textTetap
+              ]}
+            >
+              {item.statusHuni || 'Tetap'}
+            </Text>
+          </View>
+        </View>
+      </AppCard>
+    )
+  }
+
+  return (
+    <View style={styles.container}>
+      <TopAppBar title="Data Warga & Blok" navigation={navigation} />
+
+      {/* Search & Filter Header */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Cari nama, blok, nomor rumah..."
+            placeholderTextColor={colors.textSecondary}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <X size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterList}
+        >
+          {bloks.map((item) => (
+            <TouchableOpacity
+              key={item}
+              style={[styles.filterChip, selectedBlok === item && styles.filterChipActive]}
+              onPress={() => setSelectedBlok(item)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  selectedBlok === item && styles.filterChipTextActive
+                ]}
+              >
+                {item}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Summary Counter */}
+      <View style={styles.summaryBar}>
+        <Text style={styles.summaryCount}>
+          Menampilkan {filteredWarga.length} dari {scopedWarga.length} Warga
+        </Text>
+      </View>
+
+      {/* Citizen List */}
+      <FlatList
+        data={filteredWarga}
+        keyExtractor={(item, index) => item.id || `w-${item.blok}-${item.noRumah}-${index}`}
+        renderItem={renderWargaItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshData}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Users size={44} color={colors.textSecondary} style={{ marginBottom: 12 }} />
+            <Text style={styles.emptyTitle}>Data warga tidak ditemukan</Text>
+            <Text style={styles.emptySub}>Coba kata kunci atau filter blok lain.</Text>
+          </View>
+        }
+      />
+
+      {/* FAB Tambah Warga */}
+      {isAdminLoggedIn && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => navigation.navigate('Register')}
+          activeOpacity={0.88}
+        >
+          <Plus size={24} color={colors.surface} />
+        </TouchableOpacity>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background
+  },
+  searchSection: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: 4
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xs
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 13
+  },
+  filterList: {
+    gap: 6,
+    paddingBottom: 4
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  filterChipActive: {
+    backgroundColor: '#FEF2F2',
+    borderColor: colors.primary
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary
+  },
+  filterChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700'
+  },
+  summaryBar: {
+    paddingHorizontal: spacing.md,
+    paddingTop: 4,
+    paddingBottom: 2
+  },
+  summaryCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary
+  },
+  listContent: {
+    padding: spacing.md,
+    paddingTop: 6,
+    paddingBottom: 110
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    padding: spacing.md
+  },
+  cardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.xs
+  },
+  avatarWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm
+  },
+  avatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary
+  },
+  infoCol: {
+    flex: 1,
+    minWidth: 0
+  },
+  wargaNama: {
+    ...typography.cardTitle,
+    marginBottom: 2
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
+  wargaAlamat: {
+    ...typography.caption
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2
+  },
+  wargaPhone: {
+    fontSize: 11,
+    color: colors.success,
+    fontWeight: '600'
+  },
+  cardRight: {
+    alignItems: 'flex-end',
+    gap: 4
+  },
+  statusHuniBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm
+  },
+  badgeTetap: {
+    backgroundColor: '#EFF6FF'
+  },
+  badgeKontrak: {
+    backgroundColor: '#FFFBEB'
+  },
+  statusHuniText: {
+    fontSize: 10,
+    fontWeight: '600'
+  },
+  textTetap: {
+    color: colors.info
+  },
+  textKontrak: {
+    color: colors.warning
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl
+  },
+  emptyTitle: {
+    ...typography.h3,
+    color: colors.textSecondary
+  },
+  emptySub: {
+    ...typography.bodySecondary,
+    textAlign: 'center',
+    marginTop: 4
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card
+  }
+})

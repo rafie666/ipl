@@ -1,0 +1,253 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import {
+  INITIAL_CONFIG,
+  INITIAL_JENIS_IURAN,
+  INITIAL_WARGA,
+  INITIAL_TAGIHAN,
+  INITIAL_KAS,
+  INITIAL_EVENTS,
+  INITIAL_TAGIHAN_EVENTS,
+  INITIAL_ADMIN_AUTH,
+  INITIAL_USERS,
+  INITIAL_RTS,
+  INITIAL_PENGADUAN,
+  INITIAL_SURAT_PENGANTAR,
+  INITIAL_KONTAK_DARURAT,
+  INITIAL_BANK_ACCOUNTS,
+  INITIAL_QRIS_ACCOUNTS,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_AUDIT_LOGS
+} from '../data/initialData'
+import { isSupabaseConfigured, supabase } from '../api/supabase'
+
+export const STORAGE_KEYS = {
+  CONFIG: 'wargaku_config',
+  JENIS_IURAN: 'wargaku_jenis_iuran',
+  WARGA: 'wargaku_warga',
+  TAGIHAN: 'wargaku_tagihan',
+  KAS: 'wargaku_kas',
+  EVENTS: 'wargaku_events',
+  TAGIHAN_EVENTS: 'wargaku_tagihan_events',
+  RTS: 'wargaku_rts',
+  USERS: 'wargaku_users',
+  CURRENT_USER: 'wargaku_current_user',
+  ADMIN_AUTH: 'wargaku_admin_auth',
+  PENGADUAN: 'wargaku_pengaduan',
+  SURAT: 'wargaku_surat',
+  KONTAK_DARURAT: 'wargaku_kontak_darurat',
+  BANK_ACCOUNTS: 'wargaku_bank_accounts',
+  QRIS_ACCOUNTS: 'wargaku_qris_accounts',
+  NOTIFICATIONS: 'wargaku_notifications',
+  AUDIT_LOGS: 'wargaku_audit_logs',
+  SEEDED: 'wargaku_seeded_mobile_v2'
+}
+
+export async function getStorageItem(key, fallbackValue = null) {
+  try {
+    const val = await AsyncStorage.getItem(key)
+    if (val === null || val === undefined) return fallbackValue
+    return JSON.parse(val)
+  } catch (err) {
+    console.warn(`Gagal membaca ${key}:`, err)
+    return fallbackValue
+  }
+}
+
+export async function deleteFromSupabase(keyName, itemId) {
+  if (!isSupabaseConfigured || !supabase || !itemId) return
+  try {
+    const fullKey = STORAGE_KEYS[keyName?.toUpperCase()] || keyName
+    await supabase.from(fullKey).delete().eq('id', itemId)
+  } catch (err) {
+    console.warn(`Supabase delete [${keyName}/${itemId}] warning:`, err)
+  }
+}
+
+export async function saveStorageItem(keyName, data) {
+  try {
+    const fullKey = STORAGE_KEYS[keyName?.toUpperCase()] || keyName
+    await AsyncStorage.setItem(fullKey, JSON.stringify(data))
+
+    // Background sync ke Supabase
+    if (isSupabaseConfigured && supabase) {
+      const knownArrayTables = new Set([
+        STORAGE_KEYS.JENIS_IURAN,
+        STORAGE_KEYS.WARGA,
+        STORAGE_KEYS.TAGIHAN,
+        STORAGE_KEYS.KAS,
+        STORAGE_KEYS.EVENTS,
+        STORAGE_KEYS.TAGIHAN_EVENTS,
+        STORAGE_KEYS.USERS,
+        STORAGE_KEYS.RTS,
+        STORAGE_KEYS.PENGADUAN,
+        STORAGE_KEYS.SURAT,
+        STORAGE_KEYS.KONTAK_DARURAT,
+        STORAGE_KEYS.BANK_ACCOUNTS,
+        STORAGE_KEYS.QRIS_ACCOUNTS,
+        STORAGE_KEYS.NOTIFICATIONS,
+        STORAGE_KEYS.AUDIT_LOGS
+      ])
+      const singleTables = new Set([STORAGE_KEYS.CONFIG, STORAGE_KEYS.ADMIN_AUTH])
+
+      try {
+        if (Array.isArray(data) && knownArrayTables.has(fullKey)) {
+          const currentIds = data.map((item) => item.id).filter(Boolean)
+          const rows = data.map((item) => ({
+            id: item.id || `row-${Math.random()}`,
+            data: item,
+            updated_at: new Date().toISOString()
+          }))
+          if (rows.length > 0) {
+            await supabase.from(fullKey).upsert(rows)
+            // Hapus data yang sudah tidak ada di list
+            const inFilter = `(${currentIds.map((id) => `"${id}"`).join(',')})`
+            await supabase.from(fullKey).delete().not('id', 'in', inFilter)
+          } else {
+            // Jika array kosong, hapus semua
+            await supabase.from(fullKey).delete().neq('id', '__dummy_impossible_key__')
+          }
+        } else if (data && typeof data === 'object' && !Array.isArray(data) && singleTables.has(fullKey)) {
+          await supabase.from(fullKey).upsert({
+            id: 'main',
+            data: data,
+            updated_at: new Date().toISOString()
+          })
+        }
+      } catch (sbErr) {
+        console.warn(`Supabase upsert [${fullKey}] warning:`, sbErr)
+      }
+    }
+  } catch (err) {
+    console.error(`Gagal menyimpan ${keyName}:`, err)
+  }
+}
+
+export async function loadInitialStorage() {
+  const isSeeded = await AsyncStorage.getItem(STORAGE_KEYS.SEEDED)
+  if (!isSeeded) {
+    await AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(INITIAL_CONFIG))
+    await AsyncStorage.setItem(STORAGE_KEYS.JENIS_IURAN, JSON.stringify(INITIAL_JENIS_IURAN))
+    await AsyncStorage.setItem(STORAGE_KEYS.WARGA, JSON.stringify(INITIAL_WARGA))
+    await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN, JSON.stringify(INITIAL_TAGIHAN))
+    await AsyncStorage.setItem(STORAGE_KEYS.KAS, JSON.stringify(INITIAL_KAS))
+    await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(INITIAL_EVENTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN_EVENTS, JSON.stringify(INITIAL_TAGIHAN_EVENTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS))
+    await AsyncStorage.setItem(STORAGE_KEYS.RTS, JSON.stringify(INITIAL_RTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.PENGADUAN, JSON.stringify(INITIAL_PENGADUAN))
+    await AsyncStorage.setItem(STORAGE_KEYS.SURAT, JSON.stringify(INITIAL_SURAT_PENGANTAR))
+    await AsyncStorage.setItem(STORAGE_KEYS.KONTAK_DARURAT, JSON.stringify(INITIAL_KONTAK_DARURAT))
+    await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, JSON.stringify(INITIAL_ADMIN_AUTH))
+    await AsyncStorage.setItem(STORAGE_KEYS.BANK_ACCOUNTS, JSON.stringify(INITIAL_BANK_ACCOUNTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.QRIS_ACCOUNTS, JSON.stringify(INITIAL_QRIS_ACCOUNTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS))
+    await AsyncStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS))
+    await AsyncStorage.setItem(STORAGE_KEYS.SEEDED, 'true')
+  }
+
+  return {
+    config: await getStorageItem(STORAGE_KEYS.CONFIG, INITIAL_CONFIG),
+    jenisIuran: await getStorageItem(STORAGE_KEYS.JENIS_IURAN, INITIAL_JENIS_IURAN),
+    warga: await getStorageItem(STORAGE_KEYS.WARGA, INITIAL_WARGA),
+    tagihan: await getStorageItem(STORAGE_KEYS.TAGIHAN, INITIAL_TAGIHAN),
+    kas: await getStorageItem(STORAGE_KEYS.KAS, INITIAL_KAS),
+    events: await getStorageItem(STORAGE_KEYS.EVENTS, INITIAL_EVENTS),
+    tagihanEvents: await getStorageItem(STORAGE_KEYS.TAGIHAN_EVENTS, INITIAL_TAGIHAN_EVENTS),
+    users: await getStorageItem(STORAGE_KEYS.USERS, INITIAL_USERS),
+    rts: await getStorageItem(STORAGE_KEYS.RTS, INITIAL_RTS),
+    pengaduan: await getStorageItem(STORAGE_KEYS.PENGADUAN, INITIAL_PENGADUAN),
+    surat: await getStorageItem(STORAGE_KEYS.SURAT, INITIAL_SURAT_PENGANTAR),
+    kontakDarurat: await getStorageItem(STORAGE_KEYS.KONTAK_DARURAT, INITIAL_KONTAK_DARURAT),
+    adminAuth: await getStorageItem(STORAGE_KEYS.ADMIN_AUTH, INITIAL_ADMIN_AUTH),
+    bankAccounts: await getStorageItem(STORAGE_KEYS.BANK_ACCOUNTS, INITIAL_BANK_ACCOUNTS),
+    qrisAccounts: await getStorageItem(STORAGE_KEYS.QRIS_ACCOUNTS, INITIAL_QRIS_ACCOUNTS),
+    notifications: await getStorageItem(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS),
+    auditLogs: await getStorageItem(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS)
+  }
+}
+
+export async function syncAllFromSupabase() {
+  if (!isSupabaseConfigured || !supabase) return null
+
+  try {
+    const [cfgRes, jiRes, wRes, tRes, kRes, evRes, teRes, uRes, rtsRes, pRes, sRes, kdRes, baRes, qaRes, notifRes, auditRes] = await Promise.all([
+      supabase.from(STORAGE_KEYS.CONFIG).select('*'),
+      supabase.from(STORAGE_KEYS.JENIS_IURAN).select('*'),
+      supabase.from(STORAGE_KEYS.WARGA).select('*'),
+      supabase.from(STORAGE_KEYS.TAGIHAN).select('*'),
+      supabase.from(STORAGE_KEYS.KAS).select('*'),
+      supabase.from(STORAGE_KEYS.EVENTS).select('*'),
+      supabase.from(STORAGE_KEYS.TAGIHAN_EVENTS).select('*'),
+      supabase.from(STORAGE_KEYS.USERS).select('*'),
+      supabase.from(STORAGE_KEYS.RTS).select('*'),
+      supabase.from(STORAGE_KEYS.PENGADUAN).select('*'),
+      supabase.from(STORAGE_KEYS.SURAT).select('*'),
+      supabase.from(STORAGE_KEYS.KONTAK_DARURAT).select('*'),
+      supabase.from(STORAGE_KEYS.BANK_ACCOUNTS).select('*'),
+      supabase.from(STORAGE_KEYS.QRIS_ACCOUNTS).select('*'),
+      supabase.from(STORAGE_KEYS.NOTIFICATIONS).select('*'),
+      supabase.from(STORAGE_KEYS.AUDIT_LOGS).select('*')
+    ])
+
+    const extractRows = (res) => (res.data || []).map((r) => r.data)
+    const extractSingle = (res) => res.data?.[0]?.data || null
+
+    const result = {
+      config: extractSingle(cfgRes),
+      jenisIuran: extractRows(jiRes),
+      warga: extractRows(wRes),
+      tagihan: extractRows(tRes),
+      kas: extractRows(kRes),
+      events: extractRows(evRes),
+      tagihanEvents: extractRows(teRes),
+      users: extractRows(uRes),
+      rts: extractRows(rtsRes),
+      pengaduan: extractRows(pRes),
+      surat: extractRows(sRes),
+      kontakDarurat: extractRows(kdRes),
+      bankAccounts: extractRows(baRes),
+      qrisAccounts: extractRows(qaRes),
+      notifications: extractRows(notifRes),
+      auditLogs: extractRows(auditRes)
+    }
+
+    if (result.config) await AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(result.config))
+    if (result.jenisIuran.length) await AsyncStorage.setItem(STORAGE_KEYS.JENIS_IURAN, JSON.stringify(result.jenisIuran))
+    if (result.warga.length) await AsyncStorage.setItem(STORAGE_KEYS.WARGA, JSON.stringify(result.warga))
+    if (result.tagihan.length) await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN, JSON.stringify(result.tagihan))
+    if (result.kas.length) await AsyncStorage.setItem(STORAGE_KEYS.KAS, JSON.stringify(result.kas))
+    if (result.events.length) await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(result.events))
+    if (result.tagihanEvents.length) await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN_EVENTS, JSON.stringify(result.tagihanEvents))
+    if (result.users.length) await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(result.users))
+    if (result.rts.length) await AsyncStorage.setItem(STORAGE_KEYS.RTS, JSON.stringify(result.rts))
+    if (result.pengaduan.length) await AsyncStorage.setItem(STORAGE_KEYS.PENGADUAN, JSON.stringify(result.pengaduan))
+    if (result.surat.length) await AsyncStorage.setItem(STORAGE_KEYS.SURAT, JSON.stringify(result.surat))
+    if (result.kontakDarurat.length) await AsyncStorage.setItem(STORAGE_KEYS.KONTAK_DARURAT, JSON.stringify(result.kontakDarurat))
+    if (result.bankAccounts.length) await AsyncStorage.setItem(STORAGE_KEYS.BANK_ACCOUNTS, JSON.stringify(result.bankAccounts))
+    if (result.qrisAccounts.length) await AsyncStorage.setItem(STORAGE_KEYS.QRIS_ACCOUNTS, JSON.stringify(result.qrisAccounts))
+    if (result.notifications.length) await AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(result.notifications))
+    if (result.auditLogs.length) await AsyncStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(result.auditLogs))
+
+    return result
+  } catch (err) {
+    console.warn('Gagal sync Supabase:', err)
+    return null
+  }
+}
+
+export async function resetAllStorageToDefault() {
+  await AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(INITIAL_CONFIG))
+  await AsyncStorage.setItem(STORAGE_KEYS.JENIS_IURAN, JSON.stringify(INITIAL_JENIS_IURAN))
+  await AsyncStorage.setItem(STORAGE_KEYS.WARGA, JSON.stringify(INITIAL_WARGA))
+  await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN, JSON.stringify(INITIAL_TAGIHAN))
+  await AsyncStorage.setItem(STORAGE_KEYS.KAS, JSON.stringify(INITIAL_KAS))
+  await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(INITIAL_EVENTS))
+  await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN_EVENTS, JSON.stringify(INITIAL_TAGIHAN_EVENTS))
+  await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS))
+  await AsyncStorage.setItem(STORAGE_KEYS.RTS, JSON.stringify(INITIAL_RTS))
+  await AsyncStorage.setItem(STORAGE_KEYS.PENGADUAN, JSON.stringify(INITIAL_PENGADUAN))
+  await AsyncStorage.setItem(STORAGE_KEYS.SURAT, JSON.stringify(INITIAL_SURAT_PENGANTAR))
+  await AsyncStorage.setItem(STORAGE_KEYS.KONTAK_DARURAT, JSON.stringify(INITIAL_KONTAK_DARURAT))
+  await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, JSON.stringify(INITIAL_ADMIN_AUTH))
+  return true
+}
