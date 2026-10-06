@@ -159,7 +159,7 @@ export function AppProvider({ children }) {
 
   // Auth Functions
   const login = async (username, password) => {
-    const res = await apiLogin({ username, password, users, adminAuth })
+    const res = await apiLogin({ username, password, users, adminAuth, residents: warga })
     if (res.success) {
       setCurrentUser(res.user)
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(res.user))

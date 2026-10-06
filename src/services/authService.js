@@ -100,6 +100,74 @@ export async function apiLogin({ username, password, users = [], adminAuth = nul
     }
   }
 
+  // 3. Fallback login RT 02 / RT 03
+  if (inputPass === 'password') {
+    if (inputUser === 'rt02' || inputUser === 'rt2' || inputUser === 'rt-2') {
+      const rt2User = {
+        id: 'u-rt-2',
+        username: 'rt02',
+        name: 'Bpk. Hendra Wijaya (Ketua RT 02)',
+        role: 'rt',
+        resident_id: null,
+        rt_id: 'rt-2',
+        status: 'active'
+      }
+      return { success: true, token: generateSessionToken(rt2User), user: rt2User }
+    }
+    if (inputUser === 'rt03' || inputUser === 'rt3' || inputUser === 'rt-3') {
+      const rt3User = {
+        id: 'u-rt-3',
+        username: 'rt03',
+        name: 'Bpk. Agus Salim (Ketua RT 03)',
+        role: 'rt',
+        resident_id: null,
+        rt_id: 'rt-3',
+        status: 'active'
+      }
+      return { success: true, token: generateSessionToken(rt3User), user: rt3User }
+    }
+  }
+
+  // 4. Fallback login warga dari database seed (NIK, nama slug, kode unik, ID, no HP)
+  if (Array.isArray(residents) && residents.length > 0 && inputPass === 'password') {
+    const matchedResident = residents.find((r) => {
+      const rId = (r.id || '').toLowerCase()
+      const rNik = (r.nik || '').toLowerCase()
+      const rHp = (r.noHp || '').replace(/[^0-9]/g, '')
+      const rName = (r.nama || '').toLowerCase()
+      const rUserSlug = rName.replace(/[^a-z0-9]/g, '.')
+      const rKode = (r.kodeUnik || '').toLowerCase()
+      const rFirstName = rName.split(' ')[0]
+      return (
+        inputUser === rId ||
+        inputUser === rNik ||
+        (rHp && inputUser === rHp) ||
+        inputUser === rName ||
+        inputUser === rUserSlug ||
+        inputUser === rKode ||
+        inputUser === rFirstName
+      )
+    })
+
+    if (matchedResident) {
+      const wargaUser = {
+        id: `u-${matchedResident.id}`,
+        username: matchedResident.nama.toLowerCase().replace(/[^a-z0-9]/g, '.'),
+        name: `${matchedResident.nama} (Warga Blok ${matchedResident.blok}-${matchedResident.noRumah})`,
+        role: 'warga',
+        resident_id: matchedResident.id,
+        rt_id: matchedResident.rt_id,
+        status: matchedResident.aktif === false ? 'inactive' : 'active'
+      }
+      const token = generateSessionToken(wargaUser)
+      return {
+        success: true,
+        token,
+        user: wargaUser
+      }
+    }
+  }
+
   return {
     success: false,
     message: 'Username atau kata sandi salah. Silakan periksa kembali!'
