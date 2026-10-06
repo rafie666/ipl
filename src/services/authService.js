@@ -190,10 +190,32 @@ export function filterBillsByRole(bills = [], residents = [], currentUser = null
   if (!currentUser) return []
   if (currentUser.role === 'admin') return bills
 
-  const accessibleResidentIds = new Set(
-    filterResidentsByRole(residents, currentUser).map((r) => r.id)
-  )
-  return bills.filter((b) => accessibleResidentIds.has(b.wargaId))
+  if (currentUser.role === 'rt') {
+    const rtResidents = residents.filter((r) => r.rt_id === currentUser.rt_id)
+    const rtResidentIds = new Set(rtResidents.map((r) => r.id))
+    // RT hanya mengelola tagihan tingkat RT untuk warganya sendiri (bukan tagihan RW atau RT lain)
+    return bills.filter((b) => {
+      if (!rtResidentIds.has(b.wargaId)) return false
+      return b.payment_scope === 'RT' || (!b.payment_scope && (!b.target_payment_owner || b.target_payment_owner === currentUser.rt_id))
+    })
+  }
+
+  if (currentUser.role === 'warga') {
+    const myResident = residents.find((r) => r.id === currentUser.resident_id)
+    const myRtId = myResident?.rt_id || currentUser.rt_id
+    return bills.filter((b) => {
+      // Hanya tagihan untuk warga ini
+      if (b.wargaId !== currentUser.resident_id) return false
+      // Tagihan RW: wajib bayar tingkat RW
+      if (b.payment_scope === 'RW') return true
+      // Tagihan RT: hanya jika dari RT warga sendiri
+      const billRt = b.rt_id || b.target_payment_owner
+      if (billRt && myRtId && billRt !== myRtId) return false
+      return true
+    })
+  }
+
+  return []
 }
 
 export function filterKasByRole(kasList = [], currentUser = null) {

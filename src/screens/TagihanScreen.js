@@ -419,7 +419,8 @@ export default function TagihanScreen({ navigation }) {
           setBiasaNama('')
           setBiasaNominal('')
           setBiasaCatatan('')
-          Alert.alert('Sukses', `Berhasil menerbitkan "${biasaNama}" ke semua warga (${res.count} KK) lengkap dengan 3 digit kode unik per warga!`)
+          const targetKet = isRT ? `seluruh warga ${rtLabel}` : `semua warga RW`
+          Alert.alert('Sukses', `Berhasil menerbitkan "${biasaNama}" ke ${targetKet} (${res.count} KK) lengkap dengan 3 digit kode unik per warga!`)
         } else {
           Alert.alert('Informasi', 'Tidak ada warga aktif yang dapat diterbitkan tagihan.')
         }
@@ -830,35 +831,51 @@ export default function TagihanScreen({ navigation }) {
       <TopAppBar title="Tagihan & Iuran" navigation={navigation} />
 
       <View style={styles.filterSection}>
-        {/* Scope Segment Tabs: Semua | Tagihan RT | Tagihan RW */}
-        <View style={styles.scopeSegmentRow}>
-          <TouchableOpacity
-            style={[styles.scopeSegBtn, scopeFilter === 'ALL' && styles.scopeSegBtnActive]}
-            onPress={() => setScopeFilter('ALL')}
-          >
-            <Text style={[styles.scopeSegText, scopeFilter === 'ALL' && styles.scopeSegTextActive]}>
-              Semua Tagihan
-            </Text>
-          </TouchableOpacity>
+        {/* Scope Segment Tabs: Semua | Tagihan RT | Tagihan RW (atau Banner Khusus RT) */}
+        {!isRT ? (
+          <View style={styles.scopeSegmentRow}>
+            <TouchableOpacity
+              style={[styles.scopeSegBtn, scopeFilter === 'ALL' && styles.scopeSegBtnActive]}
+              onPress={() => setScopeFilter('ALL')}
+            >
+              <Text style={[styles.scopeSegText, scopeFilter === 'ALL' && styles.scopeSegTextActive]}>
+                Semua Tagihan
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.scopeSegBtn, scopeFilter === 'RT' && styles.scopeSegBtnActive]}
-            onPress={() => setScopeFilter('RT')}
-          >
-            <Text style={[styles.scopeSegText, scopeFilter === 'RT' && styles.scopeSegTextActive]}>
-              Tagihan RT
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.scopeSegBtn, scopeFilter === 'RT' && styles.scopeSegBtnActive]}
+              onPress={() => setScopeFilter('RT')}
+            >
+              <Text style={[styles.scopeSegText, scopeFilter === 'RT' && styles.scopeSegTextActive]}>
+                Tagihan RT
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.scopeSegBtn, scopeFilter === 'RW' && styles.scopeSegBtnActive]}
-            onPress={() => setScopeFilter('RW')}
-          >
-            <Text style={[styles.scopeSegText, scopeFilter === 'RW' && styles.scopeSegTextActive]}>
-              Tagihan RW
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.scopeSegBtn, scopeFilter === 'RW' && styles.scopeSegBtnActive]}
+              onPress={() => setScopeFilter('RW')}
+            >
+              <Text style={[styles.scopeSegText, scopeFilter === 'RW' && styles.scopeSegTextActive]}>
+                Tagihan RW
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.scopeSegmentRow, { justifyContent: 'space-between', paddingHorizontal: 12, alignItems: 'center' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Home size={15} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
+                Kelola Tagihan Wilayah {rtLabel}
+              </Text>
+            </View>
+            <View style={[styles.scopeSmallBadge, styles.badgeRt]}>
+              <Text style={[styles.scopeSmallBadgeText, styles.textRt]}>
+                Khusus Warga {rtLabel}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Selection Bar / Toolbar Toggle for RT/RW */}
         {Boolean(isAdminLoggedIn) ? (
@@ -1557,7 +1574,7 @@ export default function TagihanScreen({ navigation }) {
 
           {/* List Warga Chips */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8 }}>
-            {warga
+            {(isRT ? scopedWarga : warga)
               .filter((w) => {
                 if (!manWargaSearch.trim()) return true
                 const q = manWargaSearch.toLowerCase()
@@ -1912,7 +1929,7 @@ export default function TagihanScreen({ navigation }) {
               onPress={() => setBiasaTarget('SEMUA')}
             >
               <Text style={[styles.scopeToggleText, biasaTarget === 'SEMUA' && styles.scopeToggleTextActive]}>
-                👥 Ke SEMUA Warga (Massal)
+                {isRT ? `👥 Ke Seluruh Warga ${rtLabel} (Massal)` : '👥 Ke SEMUA Warga RW (Massal)'}
               </Text>
             </TouchableOpacity>
 
@@ -1967,7 +1984,7 @@ export default function TagihanScreen({ navigation }) {
               />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8 }}>
-              {warga
+              {(isRT ? scopedWarga : warga)
                 .filter((w) => {
                   if (!manWargaSearch.trim()) return true
                   const q = manWargaSearch.toLowerCase()

@@ -204,11 +204,15 @@ export function AppProvider({ children }) {
     const t = Number(tahun)
 
     const isRtUser = currentUser?.role === 'rt'
-    const finalRtId = isRtUser ? currentUser?.rt_id || 'rt-1' : targetRtId
+    const finalRtId = isRtUser ? (currentUser?.rt_id || 'rt-1') : targetRtId
+    const finalScope = isRtUser ? 'RT' : scope
 
     const targetWargaList = warga.filter((w) => {
       if (w.aktif === false) return false
-      if (finalRtId) return w.rt_id === finalRtId
+      // RT user strictly only bills their own RT
+      if (isRtUser) return w.rt_id === finalRtId
+      // RW user: if targetRtId specified (not null / not 'ALL'), only bill that RT
+      if (finalRtId && finalRtId !== 'ALL') return w.rt_id === finalRtId
       return true
     })
 
@@ -218,8 +222,12 @@ export function AppProvider({ children }) {
     targetWargaList.forEach((w) => {
       const rtObj = rts.find((r) => r.id === w.rt_id) || {}
       
-      // Determine scopes to create: 'RT', 'RW', or both
-      const scopesToGenerate = scope === 'ALL' ? ['RT', 'RW'] : [scope]
+      // Determine scopes to create: if RT user, strictly ['RT']!
+      const scopesToGenerate = isRtUser
+        ? ['RT']
+        : finalScope === 'ALL'
+        ? ['RT', 'RW']
+        : [finalScope]
 
       scopesToGenerate.forEach((sc) => {
         let activeIuran = jenisIuran.filter(
@@ -267,6 +275,7 @@ export function AppProvider({ children }) {
           newInvoices.push({
             id: invId,
             wargaId: w.id,
+            rt_id: w.rt_id,
             namaWarga: w.nama,
             blok: w.blok,
             noRumah: w.noRumah,
@@ -693,12 +702,18 @@ export function AppProvider({ children }) {
     const randomSeq = Math.floor(100 + Math.random() * 900)
     const isLunas = data.status === 'Lunas'
     const targetW = warga.find((w) => w.id === data.wargaId) || {}
+
+    const isRtUser = currentUser?.role === 'rt'
+    if (isRtUser && targetW.rt_id && targetW.rt_id !== (currentUser?.rt_id || 'rt-1')) {
+      throw new Error(`Pengurus RT tidak dapat menerbitkan tagihan untuk warga RT lain!`)
+    }
+
     const kodeUnikWarga = getKodeUnikWarga(targetW)
     const angkaKode = parseInt(getAngkaKodeUnik(targetW), 10) || 0
     const rawTotal = Number(data.total) || 0
     const finalTotal = calculateTotalWithKodeUnik(rawTotal, targetW)
 
-    const targetScope = data.payment_scope || (currentUser?.role === 'admin' ? 'RW' : 'RT')
+    const targetScope = isRtUser ? 'RT' : (data.payment_scope || 'RW')
     const isRwScope = targetScope === 'RW'
     const ownerId = isRwScope ? (config?.rw || 'rw-15') : (targetW.rt_id || currentUser?.rt_id || 'rt-1')
     const rtObj = rts.find((r) => r.id === ownerId) || {}
@@ -708,6 +723,7 @@ export function AppProvider({ children }) {
     const item = {
       id: `tag-manual-${Date.now()}`,
       wargaId: data.wargaId,
+      rt_id: targetW.rt_id || ownerId,
       namaWarga: targetW.nama || 'Warga',
       blok: targetW.blok || 'A',
       noRumah: targetW.noRumah || '-',
@@ -893,13 +909,18 @@ export function AppProvider({ children }) {
     const b = Number(bulan)
     const t = Number(tahun)
     const rawNominal = Number(nominal) || 0
-    const isRw = scope === 'RW'
     const isRtUser = currentUser?.role === 'rt'
+    const finalScope = isRtUser ? 'RT' : scope
+    const isRw = finalScope === 'RW'
     const finalRtId = isRtUser ? (currentUser?.rt_id || 'rt-1') : targetRtId
 
     const targetWargaList = warga.filter((w) => {
       if (w.aktif === false) return false
-      if (finalRtId && !isRw) return w.rt_id === finalRtId
+      // RT user strictly only bills their own RT
+      if (isRtUser) return w.rt_id === finalRtId
+      // RW user: if targetRtId specified (not null / not 'ALL'), only bill that RT
+      if (!isRw && finalRtId) return w.rt_id === finalRtId
+      if (isRw && targetRtId && targetRtId !== 'ALL') return w.rt_id === targetRtId
       return true
     })
 
@@ -919,6 +940,7 @@ export function AppProvider({ children }) {
       newItems.push({
         id: invId,
         wargaId: w.id,
+        rt_id: w.rt_id,
         namaWarga: w.nama,
         blok: w.blok,
         noRumah: w.noRumah,
@@ -930,7 +952,7 @@ export function AppProvider({ children }) {
           { nama: namaTagihan || 'Tagihan Biasa', nominal: Math.floor(rawNominal / 1000) * 1000 },
           { nama: `Kode Unik Warga (${kodeUnikWarga})`, nominal: angkaKode }
         ],
-        payment_scope: scope,
+        payment_scope: finalScope,
         target_payment_owner: ownerId,
         pembayaran_kepada: ownerLabel,
         status: 'Belum Bayar',
