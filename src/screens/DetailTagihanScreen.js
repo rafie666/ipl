@@ -950,6 +950,8 @@ export default function DetailTagihanScreen({ route, navigation }) {
             </View>
           </KeyboardAvoidingView>
         </View>
+      </Modal>
+
       {/* Modal Edit Tagihan */}
       <AppModal
         visible={editModalOpen}
