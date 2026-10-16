@@ -10,15 +10,26 @@ import {
   Wallet,
   Settings,
   Users,
-  Key
+  Key,
+  ShieldCheck
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import TopAppBar from '../components/TopAppBar'
 import AppCard from '../components/AppCard'
+import { NotificationBadge } from '../components/ui/NotificationBadge'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 
 export default function LayananScreen({ navigation }) {
-  const { isWarga, isRT, isAdmin } = useApp()
+  const {
+    isWarga,
+    isRT,
+    isRW,
+    isBendahara,
+    isPengurus,
+    isAdmin,
+    suratUnreadCount = 0,
+    aduanUnreadCount = 0
+  } = useApp()
 
   const wargaMenus = [
     {
@@ -38,6 +49,14 @@ export default function LayananScreen({ navigation }) {
       route: 'Surat'
     },
     {
+      id: 'satpam',
+      title: 'Jadwal Satpam & Keamanan',
+      desc: 'Jadwal shift jaga posko, petugas siaga & patroli malam.',
+      icon: ShieldCheck,
+      color: '#6D28D9',
+      route: 'JadwalSatpam'
+    },
+    {
       id: 'darurat',
       title: 'Kontak Cepat Darurat',
       desc: 'Nomor telepon satpam posko, medis, polsek & pemadam.',
@@ -46,16 +65,34 @@ export default function LayananScreen({ navigation }) {
       route: 'KontakDarurat'
     },
     {
+      id: 'kas',
+      title: 'Transparansi Kas RT & RW',
+      desc: 'Laporan pengeluaran, pemasukan, dan rincian belanja kas terbuka lingkungan.',
+      icon: Wallet,
+      color: colors.success,
+      route: 'Kas'
+    },
+    {
       id: 'events',
-      title: 'Agenda & Acara Warga',
-      desc: 'Informasi kegiatan 17 Agustus, kerja bakti, dan lomba.',
+      title: 'Iuran Kegiatan & Acara',
+      desc: 'Informasi dan pembayaran iuran kegiatan 17 Agustus, kerja bakti & lomba.',
       icon: Trophy,
       color: colors.warning,
       route: 'Events'
     }
   ]
 
-  const pengurusMenus = [
+  const allStaffMenus = [
+    {
+      id: 'satpam',
+      title: 'Jadwal Satpam & Keamanan',
+      desc: 'Atur shift jaga, penugasan pos keamanan & nomor siaga.',
+      icon: ShieldCheck,
+      color: '#6D28D9',
+      route: 'JadwalSatpam',
+      category: 'Keamanan',
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
+    },
     {
       id: 'kas',
       title: 'Buku Kas & Keuangan',
@@ -63,7 +100,8 @@ export default function LayananScreen({ navigation }) {
       icon: Wallet,
       color: colors.success,
       route: 'Kas',
-      category: 'Keuangan'
+      category: 'Keuangan',
+      allowedRoles: ['admin', 'rw', 'rt', 'bendahara']
     },
     {
       id: 'surat',
@@ -72,7 +110,8 @@ export default function LayananScreen({ navigation }) {
       icon: FileText,
       color: colors.primary,
       route: 'Surat',
-      category: 'Administrasi'
+      category: 'Administrasi',
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
     },
     {
       id: 'pengaduan',
@@ -81,16 +120,18 @@ export default function LayananScreen({ navigation }) {
       icon: MessageSquareText,
       color: colors.info,
       route: 'Pengaduan',
-      category: 'Administrasi'
+      category: 'Administrasi',
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
     },
     {
       id: 'events',
-      title: 'Agenda & Acara Lingkungan',
-      desc: 'Kelola kegiatan warga, kerja bakti, dan iuran insidental.',
+      title: 'Kelola Iuran Kegiatan',
+      desc: 'Kelola iuran kegiatan warga, 17 Agustus, kerja bakti, dan tagihan per KK.',
       icon: Trophy,
       color: colors.warning,
       route: 'Events',
-      category: 'Kegiatan'
+      category: 'Iuran',
+      allowedRoles: ['admin', 'rw', 'rt', 'bendahara', 'pengurus']
     },
     {
       id: 'peta',
@@ -99,7 +140,8 @@ export default function LayananScreen({ navigation }) {
       icon: MapPin,
       color: '#8B5CF6',
       route: 'PetaWarga',
-      category: 'Ringkasan'
+      category: 'Ringkasan',
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
     },
     {
       id: 'kontak',
@@ -108,7 +150,8 @@ export default function LayananScreen({ navigation }) {
       icon: PhoneCall,
       color: colors.danger,
       route: 'KontakDarurat',
-      category: 'Layanan'
+      category: 'Layanan',
+      allowedRoles: ['admin', 'rw', 'rt', 'bendahara', 'pengurus']
     },
     {
       id: 'warga',
@@ -117,16 +160,18 @@ export default function LayananScreen({ navigation }) {
       icon: Users,
       color: colors.info,
       route: 'WargaList',
-      category: 'Master Data & Akses'
+      category: 'Master Data & Akses',
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
     },
     {
       id: 'akses',
-      title: 'Data Akses Admin & RT',
-      desc: 'Kelola akun login Super Admin, Ketua RT, dan warga.',
+      title: 'Data Akses & Akun Login',
+      desc: 'Kelola akun login Super Admin, Ketua RW/RT, Bendahara & Pengurus.',
       icon: Key,
       color: colors.success,
       route: 'DataAkses',
-      category: 'Master Data & Akses'
+      category: 'Master Data & Akses',
+      allowedRoles: ['admin', 'rw']
     },
     {
       id: 'pengaturan',
@@ -135,11 +180,24 @@ export default function LayananScreen({ navigation }) {
       icon: Settings,
       color: colors.primary,
       route: 'Pengaturan',
-      category: 'Sistem & Konfigurasi'
+      category: 'Sistem & Konfigurasi',
+      allowedRoles: ['admin', 'rw', 'rt', 'bendahara', 'pengurus']
     }
   ]
 
-  const activeMenus = isWarga ? wargaMenus : pengurusMenus
+  const currentRoleTag = isBendahara
+    ? 'bendahara'
+    : isPengurus
+    ? 'pengurus'
+    : isRT
+    ? 'rt'
+    : isRW
+    ? 'rw'
+    : 'admin'
+
+  const activeMenus = isWarga
+    ? wargaMenus
+    : allStaffMenus.filter((m) => !m.allowedRoles || m.allowedRoles.includes(currentRoleTag))
 
   return (
     <View style={styles.container}>
@@ -147,31 +205,58 @@ export default function LayananScreen({ navigation }) {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerBox}>
-          <Text style={styles.headerTitle}>Pusat Layanan Warga</Text>
+          <Text style={styles.headerTitle}>
+            {isWarga ? 'Pusat Layanan Warga' : 'Pusat Administrasi & Layanan'}
+          </Text>
           <Text style={styles.headerSubtitle}>
-            Akses cepat administrasi, surat pengantar, aduan, dan fasilitas lingkungan.
+            {isWarga
+              ? 'Akses cepat administrasi, surat pengantar, aduan, dan fasilitas lingkungan.'
+              : 'Kelola operasional warga, permohonan surat, pengaduan, dan data lingkungan.'}
           </Text>
         </View>
 
-        {activeMenus.map((item) => {
+        {activeMenus.map((item, index) => {
           const IconComponent = item.icon
+          const showCategory = !isWarga && (index === 0 || activeMenus[index - 1].category !== item.category)
+          const badgeCount = item.id === 'surat' ? suratUnreadCount : (item.id === 'pengaduan' ? aduanUnreadCount : 0)
+
           return (
-            <AppCard
-              key={item.id}
-              style={styles.menuCard}
-              onPress={() => navigation.navigate(item.route)}
-            >
-              <View style={[styles.iconWrap, { backgroundColor: item.color + '15' }]}>
-                <IconComponent size={22} color={item.color} />
-              </View>
+            <React.Fragment key={item.id}>
+              {showCategory && (
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.categoryHeaderText}>{item.category}</Text>
+                </View>
+              )}
+              <AppCard
+                style={styles.menuCard}
+                onPress={() => navigation.navigate(item.route)}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title}, ${item.desc}${badgeCount > 0 ? `, ${badgeCount} belum dibaca` : ''}`}
+              >
+                <View style={[styles.iconWrap, { backgroundColor: item.color + '18' }]}>
+                  <IconComponent size={22} color={item.color} />
+                  {badgeCount > 0 && (
+                    <NotificationBadge count={badgeCount} style={styles.iconCornerBadge} />
+                  )}
+                </View>
 
-              <View style={styles.textWrap}>
-                <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.menuDesc} numberOfLines={2}>{item.desc}</Text>
-              </View>
+                <View style={styles.textWrap}>
+                  <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.menuDesc} numberOfLines={2}>{item.desc}</Text>
+                </View>
 
-              <ChevronRight size={18} color={colors.textSecondary} />
-            </AppCard>
+                {badgeCount > 0 && (
+                  <View style={styles.unreadPill}>
+                    <Text style={styles.unreadPillText}>
+                      {badgeCount > 99 ? '99+' : badgeCount} Baru
+                    </Text>
+                  </View>
+                )}
+
+                <ChevronRight size={18} color={colors.textSecondary} />
+              </AppCard>
+            </React.Fragment>
           )
         })}
       </ScrollView>
@@ -185,8 +270,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   scrollContent: {
-    padding: spacing.md,
-    paddingBottom: 110
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: 170
   },
   headerBox: {
     marginBottom: spacing.md
@@ -197,6 +283,17 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     ...typography.bodySecondary,
     marginTop: 2
+  },
+  categoryHeader: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    paddingHorizontal: 2
+  },
+  categoryHeaderText: {
+    ...typography.labelSm,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6
   },
   menuCard: {
     flexDirection: 'row',
@@ -210,12 +307,32 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm
+    marginRight: spacing.sm,
+    position: 'relative'
+  },
+  iconCornerBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4
   },
   textWrap: {
     flex: 1,
     minWidth: 0,
     marginRight: spacing.xs
+  },
+  unreadPill: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    marginRight: 6
+  },
+  unreadPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#DC2626'
   },
   menuTitle: {
     ...typography.cardTitle,

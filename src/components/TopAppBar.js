@@ -1,15 +1,18 @@
 import React, { useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView, Alert } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Building2, Bell, Menu, ArrowLeft, Check, X, Clock, Eye, CheckCircle2, Trophy, Receipt, ShieldCheck, UserPlus } from 'lucide-react-native'
+import { Building2, Bell, Menu, ArrowLeft, Check, X, Clock, Eye, CheckCircle2, Trophy, Receipt, ShieldCheck, UserPlus, Repeat } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { colors, shadows, radius, spacing } from '../utils/theme'
 import { formatRupiah, NAMA_BULAN } from '../utils/formatters'
 import AppModal from './AppModal'
 import AppButton from './AppButton'
 
-export default function TopAppBar({ title, navigation, showBack = false }) {
+export default function TopAppBar({ title, navigation, showBack }) {
   const insets = useSafeAreaInsets()
+  const canGoBack = Boolean(navigation?.canGoBack && navigation.canGoBack())
+  // Tampilkan tombol back di semua page kecuali jika eksplisit dimatikan (seperti Dashboard)
+  const shouldShowBack = showBack !== undefined ? Boolean(showBack) : true
   const {
     currentUser,
     currentRT,
@@ -19,25 +22,37 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
     tagihanEvents,
     warga,
     scopedWarga,
+    rts,
     verifikasiTagihan,
     bayarTagihanEvent,
     tolakTagihanEvent,
     verifikasiWargaBaru,
-    notifications
+    notifications,
+    isWarga,
+    isRT,
+    isRW,
+    isBendahara,
+    isPengurus,
+    isAdmin,
+    hasDualRole,
+    activeMode,
+    toggleActiveMode,
+    jabatanShortLabel
   } = useApp()
 
   const [notifModalOpen, setNotifModalOpen] = useState(false)
 
-  const isWarga = currentUser?.role === 'warga'
-  const isRT = currentUser?.role === 'rt'
-  const isAdmin = currentUser?.role === 'admin'
-
-  const roleLabel =
-    isAdmin
-      ? 'ADMIN RW'
-      : isRT
-      ? currentRT?.name || 'RT 01'
-      : 'WARGA'
+  const roleLabel = isWarga
+    ? (hasDualRole ? 'WARGA' : 'WARGA')
+    : isBendahara
+    ? 'BENDAHARA'
+    : isPengurus
+    ? 'PENGURUS'
+    : isRW
+    ? 'KETUA RW'
+    : isRT
+    ? (currentRT?.name || 'KETUA RT')
+    : 'ADMIN IT'
 
   // 1. Pendaftaran Warga Baru butuh ACC
   const pendingWarga = (scopedWarga || warga || []).filter((w) => {
@@ -178,11 +193,18 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <View style={styles.contentRow}>
-        {showBack ? (
+        {shouldShowBack ? (
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation?.goBack()}
+            onPress={() => {
+              if (navigation?.canGoBack && navigation.canGoBack()) {
+                navigation.goBack()
+              } else {
+                navigation?.navigate('Main', { screen: 'DashboardTab' })
+              }
+            }}
             activeOpacity={0.8}
+            accessibilityLabel="Kembali"
           >
             <ArrowLeft size={22} color={colors.white} />
           </TouchableOpacity>
@@ -206,6 +228,20 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
         </View>
 
         <View style={styles.actionsRow}>
+          {/* Mode Switcher Toggle Button (Khusus Bendahara & Pengurus; RT & RW adalah akun tata kelola murni) */}
+          {hasDualRole && !isRT && !isRW && (
+            <TouchableOpacity
+              style={styles.modeToggleChip}
+              onPress={toggleActiveMode}
+              activeOpacity={0.8}
+            >
+              <Repeat size={12} color={colors.white} strokeWidth={2.4} />
+              <Text style={styles.modeToggleChipText}>
+                {activeMode === 'jabatan' ? jabatanShortLabel : 'Warga'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* Lonceng Notifikasi & Persetujuan */}
           <TouchableOpacity
             style={styles.iconButton}
@@ -217,8 +253,11 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
               }
             }}
             activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Pemberitahuan dan Persetujuan"
           >
-            <Bell size={20} color={colors.white} />
+            <Bell size={21} color={colors.white} />
             {hasNotif && (
               <View style={styles.bellBadgeDot}>
                 {!isWarga && totalPending > 0 && (
@@ -240,8 +279,11 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
               }
             }}
             activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Menu Pengaturan"
           >
-            <Menu size={20} color={colors.white} />
+            <Menu size={21} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>
@@ -382,12 +424,12 @@ export default function TopAppBar({ title, navigation, showBack = false }) {
                     <View style={styles.notifCardHeader}>
                       <View style={[styles.notifBadgeIpl, { backgroundColor: '#F3E8FF' }]}>
                         <Trophy size={14} color="#7E22CE" />
-                        <Text style={[styles.notifBadgeTextIpl, { color: '#7E22CE' }]}>Acara</Text>
+                        <Text style={[styles.notifBadgeTextIpl, { color: '#7E22CE' }]}>Iuran</Text>
                       </View>
                       <View style={{ flex: 1, marginLeft: 6 }}>
                         <Text style={styles.notifWargaName}>{targetW.nama || 'Warga'}</Text>
                         <Text style={styles.notifWargaBlok}>
-                          Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'} • {ev.judul || 'Kegiatan'}
+                          Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'} • {ev.judul || 'Iuran Kegiatan'}
                         </Text>
                       </View>
                       <Text style={[styles.notifNominal, { color: '#7E22CE' }]}>
@@ -441,7 +483,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-    ...shadows.redGlow
+    ...shadows.soft
   },
   contentRow: {
     flexDirection: 'row',
@@ -455,12 +497,13 @@ const styles = StyleSheet.create({
   brandContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flex: 1
+    gap: 8,
+    flex: 1,
+    minWidth: 0
   },
   logoBadge: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     backgroundColor: colors.white,
     alignItems: 'center',
@@ -468,7 +511,8 @@ const styles = StyleSheet.create({
     ...shadows.soft
   },
   titleCol: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   titleRow: {
     flexDirection: 'row',
@@ -476,38 +520,38 @@ const styles = StyleSheet.create({
     gap: 6
   },
   appName: {
-    fontSize: 16,
+    fontSize: 16.5,
     fontWeight: '800',
     color: colors.white,
     letterSpacing: -0.3
   },
   rolePill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.24)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 6
   },
   rolePillText: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '800',
     color: colors.white,
     letterSpacing: 0.5
   },
   subtitle: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 11.5,
+    color: 'rgba(255, 255, 255, 0.90)',
     fontWeight: '500',
     marginTop: 1
   },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6
+    gap: 8
   },
   iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.16)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -523,7 +567,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
     borderWidth: 1.5,
     borderColor: colors.primary
   },
@@ -531,6 +575,22 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 9,
     fontWeight: '800'
+  },
+  modeToggleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)'
+  },
+  modeToggleChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.white
   },
   curveEdge: {
     position: 'absolute',

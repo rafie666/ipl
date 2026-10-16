@@ -1294,11 +1294,11 @@ const styles = StyleSheet.create({
   /* OTHER MODES STYLES */
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 150
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 150
   },
   sectionHeaderTitle: {
     fontSize: 13,

@@ -1,6 +1,6 @@
 import React from 'react'
 import { ScrollView, TouchableOpacity, Text, StyleSheet, View } from 'react-native'
-import { colors, spacing, radius, shadows } from '../utils/theme'
+import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 
 export default function AppTabs({
   tabs = [], // [{ id, label, icon: Icon, badgeCount }]
@@ -21,6 +21,10 @@ export default function AppTabs({
           style={[styles.tabUnderline, isActive && styles.tabUnderlineActive]}
           onPress={() => onTabChange(tab.id)}
           activeOpacity={0.75}
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isActive }}
+          accessibilityLabel={tab.label}
         >
           {Icon ? (
             <Icon
@@ -69,6 +73,10 @@ export default function AppTabs({
         ]}
         onPress={() => onTabChange(tab.id)}
         activeOpacity={0.75}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: isActive }}
+        accessibilityLabel={tab.label}
       >
         {Icon ? (
           <Icon
@@ -80,7 +88,7 @@ export default function AppTabs({
         <Text
           style={[
             styles.chipText,
-            isActive ? styles.chipTextActive : styles.chipTextInactive
+            isActive && styles.chipTextActive
           ]}
         >
           {tab.label}
@@ -158,15 +166,15 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   chipText: {
+    fontFamily: typography.labelSm.fontFamily,
     fontSize: 13,
-    fontWeight: '600'
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.textSecondary
   },
   chipTextActive: {
     color: colors.white,
     fontWeight: '700'
-  },
-  chipTextInactive: {
-    color: colors.textSecondary
   },
   chipBadge: {
     paddingHorizontal: 6,
@@ -181,6 +189,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border
   },
   chipBadgeText: {
+    fontFamily: typography.micro.fontFamily,
     fontSize: 10,
     fontWeight: '800'
   },
@@ -199,7 +208,9 @@ const styles = StyleSheet.create({
   },
   tabUnderlineActive: {},
   tabUnderlineText: {
+    fontFamily: typography.labelSm.fontFamily,
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: '600',
     color: colors.textSecondary
   },
@@ -229,6 +240,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderLight
   },
   badgeText: {
+    fontFamily: typography.micro.fontFamily,
     fontSize: 10,
     fontWeight: '700'
   },

@@ -56,7 +56,7 @@ import AppModal from '../components/AppModal'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 import { formatRupiah, formatTanggalIndo, generateWaEvent } from '../utils/formatters'
 
-const KATEGORI_EVENT = ['Pengumuman', 'Surat Edaran', 'Lomba', 'PHBI', 'Sosial', 'Fasilitas', 'Agustusan', 'Keamanan', 'Lain-lain']
+const KATEGORI_EVENT = ['Iuran 17-an', 'Iuran Lomba', 'Iuran Kerja Bakti', 'PHBI', 'Sosial', 'Fasilitas', 'Pengumuman', 'Surat Edaran', 'Lain-lain']
 
 export default function EventsScreen({ route, navigation }) {
   const {
@@ -66,6 +66,8 @@ export default function EventsScreen({ route, navigation }) {
     isWarga,
     isRT,
     isAdmin,
+    currentRT,
+    currentRW,
     currentWarga,
     currentUser,
     warga,
@@ -84,6 +86,7 @@ export default function EventsScreen({ route, navigation }) {
     tolakTagihanEvent
   } = useApp()
 
+  const activeRT = currentRT || (rts || []).find((r) => r.id === (currentUser?.rt_id || 'rt-01-01')) || rts?.[0]
   const listEvents = scopedEvents || []
   const availableWarga = (isRT ? scopedWarga : warga) || []
 
@@ -192,7 +195,7 @@ export default function EventsScreen({ route, navigation }) {
   const [judul, setJudul] = useState('')
   const [kategori, setKategori] = useState('Pengumuman')
   const [scope, setScope] = useState(isRT ? 'rt' : 'rw')
-  const [targetRtId, setTargetRtId] = useState(isRT ? (currentRT?.id || 'rt-1') : (rts[0]?.id || 'rt-1'))
+  const [targetRtId, setTargetRtId] = useState(isRT ? (activeRT?.id || 'rt-01-01') : (rts?.[0]?.id || 'rt-01-01'))
   const [nominalPerKK, setNominalPerKK] = useState('')
   const [batasTanggal, setBatasTanggal] = useState(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10))
   const [deskripsi, setDeskripsi] = useState('')
@@ -217,7 +220,7 @@ export default function EventsScreen({ route, navigation }) {
     setJudul('')
     setKategori('Pengumuman')
     setScope(isRT ? 'rt' : 'rw')
-    setTargetRtId(isRT ? (currentRT?.id || 'rt-1') : (rts[0]?.id || 'rt-1'))
+    setTargetRtId(isRT ? (activeRT?.id || 'rt-01-01') : (rts?.[0]?.id || 'rt-01-01'))
     setNominalPerKK('')
     const defaultDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
     setBatasTanggal(defaultDate)
@@ -229,7 +232,7 @@ export default function EventsScreen({ route, navigation }) {
 
   const handleTambah = async () => {
     if (!judul.trim()) {
-      Alert.alert('Perhatian', 'Judul pengumuman / kegiatan wajib diisi!')
+      Alert.alert('Perhatian', 'Judul iuran kegiatan wajib diisi!')
       return
     }
     if (targetType === 'personal' && !targetWargaId) {
@@ -238,7 +241,7 @@ export default function EventsScreen({ route, navigation }) {
     }
 
     const finalScope = isRT ? 'rt' : scope
-    const finalRtId = isRT ? (currentRT?.id || 'rt-1') : (finalScope === 'rt' ? targetRtId : null)
+    const finalRtId = isRT ? (activeRT?.id || 'rt-01-01') : (finalScope === 'rt' ? targetRtId : null)
     const finalNominal = tipePengumuman === 'iuran' ? (Number(nominalPerKK) || 0) : 0
 
     let finalExpiredAt = null
@@ -267,7 +270,7 @@ export default function EventsScreen({ route, navigation }) {
       })
       setModalOpen(false)
       resetForm()
-      Alert.alert('Sukses', targetType === 'personal' ? 'Pengumuman khusus perorangan berhasil dikirim!' : 'Pengumuman / Kegiatan berhasil diterbitkan!')
+      Alert.alert('Sukses', targetType === 'personal' ? 'Iuran khusus perorangan berhasil dikirim!' : 'Iuran Kegiatan berhasil diterbitkan!')
     } catch (e) {
       Alert.alert('Error', 'Gagal menambahkan pengumuman.')
     } finally {
@@ -341,8 +344,8 @@ export default function EventsScreen({ route, navigation }) {
 
   const handleHapus = (item) => {
     Alert.alert(
-      'Hapus Kegiatan',
-      `Yakin ingin menghapus kegiatan "${item.judul || item.nama}"?`,
+      'Hapus Iuran Kegiatan',
+      `Yakin ingin menghapus iuran kegiatan "${item.judul || item.nama}"?`,
       [
         { text: 'Batal', style: 'cancel' },
         { text: 'Hapus', style: 'destructive', onPress: () => hapusEvent(item.id) }
@@ -524,8 +527,8 @@ export default function EventsScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <AppHeader
-        title="Agenda & Kegiatan Warga"
-        subtitle="Informasi kebersamaan, peringatan hari besar & kerja bakti"
+        title="Iuran Kegiatan & Acara"
+        subtitle="Informasi dan pembayaran iuran insidental, 17 Agustus & kerja bakti"
         onBack={() => navigation.goBack()}
       />
 
@@ -549,9 +552,9 @@ export default function EventsScreen({ route, navigation }) {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Calendar size={44} color={colors.textSecondary} style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyTitle}>Belum ada agenda kegiatan</Text>
+            <Text style={styles.emptyTitle}>Belum ada iuran kegiatan</Text>
             <Text style={styles.emptySub}>
-              Pengurus belum mempublikasikan kegiatan baru.
+              Pengurus belum mempublikasikan iuran kegiatan baru.
             </Text>
           </View>
         }
@@ -571,7 +574,7 @@ export default function EventsScreen({ route, navigation }) {
       {/* Modal Tambah Pengumuman / Kegiatan */}
       <AppModal
         visible={modalOpen}
-        title="Buat Pengumuman / Kegiatan Baru"
+        title="Buat Iuran Kegiatan Baru"
         onClose={() => setModalOpen(false)}
         footer={
           <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
@@ -600,7 +603,7 @@ export default function EventsScreen({ route, navigation }) {
             {isRT ? (
               <View style={styles.rtScopeFixedBadge}>
                 <MapPin size={14} color={colors.success} />
-                <Text style={styles.rtScopeFixedText}>Pengumuman Resmi {currentRT?.name || 'RT'}</Text>
+                <Text style={styles.rtScopeFixedText}>Pengumuman Resmi {activeRT?.name || 'RT'}</Text>
               </View>
             ) : (
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -726,7 +729,7 @@ export default function EventsScreen({ route, navigation }) {
 
           {/* 4. Judul Pengumuman */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Judul Pengumuman / Kegiatan *</Text>
+            <Text style={styles.label}>Judul Iuran Kegiatan *</Text>
             <TextInput
               style={styles.input}
               placeholder={tipePengumuman === 'info' ? "Contoh: Surat Edaran Kerja Bakti & Fogging" : "Contoh: Semarak Lomba 17 Agustus 2026"}
@@ -738,7 +741,7 @@ export default function EventsScreen({ route, navigation }) {
 
           {/* 5. Kategori Chips */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Kategori Kegiatan</Text>
+            <Text style={styles.label}>Kategori Iuran Kegiatan</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
               {KATEGORI_EVENT.map((kat) => (
                 <TouchableOpacity
@@ -901,7 +904,7 @@ export default function EventsScreen({ route, navigation }) {
       {/* Modal Detail Kegiatan */}
       <AppModal
         visible={detailModalOpen}
-        title="Detail Kegiatan"
+        title="Detail Iuran Kegiatan"
         onClose={() => setDetailModalOpen(false)}
         footer={
           <AppButton
@@ -1690,7 +1693,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 190
   },
   card: {
     marginBottom: spacing.md
@@ -1771,7 +1774,7 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginTop: spacing.xs
   },
   emptyContainer: {
@@ -1791,7 +1794,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 104,
     width: 52,
     height: 52,
     borderRadius: 26,
@@ -2025,7 +2028,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   scopeBtnActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderColor: colors.primary
   },
   scopeBtnText: {
@@ -2094,13 +2097,13 @@ const styles = StyleSheet.create({
     color: colors.surface
   },
   paySummaryBox: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderRadius: radius.md,
     padding: spacing.md,
     alignItems: 'center',
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#FECDD3'
+    borderColor: '#A7F3D0'
   },
   payEventName: {
     fontSize: 13,

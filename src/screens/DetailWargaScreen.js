@@ -28,7 +28,9 @@ import {
   Edit3,
   Plus,
   X,
-  UserPlus
+  UserPlus,
+  Shield,
+  Award
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import AppHeader from '../components/AppHeader'
@@ -37,6 +39,8 @@ import AppButton from '../components/AppButton'
 import AppBadge from '../components/AppBadge'
 import AppModal from '../components/AppModal'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
+import { formatRupiah } from '../utils/format'
+import { getJabatanLabel, getJabatanShortLabel, getJabatanTheme } from '../utils/formatters'
 
 export default function DetailWargaScreen({ route, navigation }) {
   const { warga: routeWarga } = route.params || {}
@@ -81,13 +85,20 @@ export default function DetailWargaScreen({ route, navigation }) {
     )
   }
 
-  // State: modal anggota keluarga
+  // State: modal jabatan & anggota keluarga
+  const [jabatanModalOpen, setJabatanModalOpen] = useState(false)
   const [akModalOpen, setAkModalOpen] = useState(false)
   const [akNama, setAkNama] = useState('')
   const [akHubungan, setAkHubungan] = useState('Istri/Suami')
   const [akJK, setAkJK] = useState('Perempuan')
   const [akPekerjaan, setAkPekerjaan] = useState('')
   const [akLoading, setAkLoading] = useState(false)
+
+  const handleUbahJabatan = async (newJabatan) => {
+    await updateWarga(warga.id, { jabatan: newJabatan })
+    setJabatanModalOpen(false)
+    Alert.alert('Sukses', `Jabatan ${warga.nama} berhasil diubah menjadi ${getJabatanShortLabel(newJabatan)}.`)
+  }
 
   if (!warga) {
     return (
@@ -128,7 +139,7 @@ export default function DetailWargaScreen({ route, navigation }) {
 
   const handleSendReminder = () => {
     const text = `Halo Yth. Bpk/Ibu *${warga.nama}* (Blok ${warga.blok}/${warga.noRumah}),\n` +
-      `Mengingatkan iuran IPL perumahan ${config?.namaLingkungan || 'Alam Tirta'} untuk periode Bulan ${currentMonth}/${currentYear} sebesar Rp ${(currentMonthBill?.total || 120000).toLocaleString('id-ID')}.\n` +
+      `Mengingatkan iuran IPL perumahan ${config?.namaLingkungan || 'Alam Tirta'} untuk periode Bulan ${currentMonth}/${currentYear} sebesar ${formatRupiah(currentMonthBill?.total || 120000)}.\n` +
       `Pembayaran dapat ditransfer via rekening kas RT atau melalui aplikasi. Terima kasih! 🙏`
     handleWhatsApp(warga.noHp, text)
   }
@@ -282,6 +293,27 @@ export default function DetailWargaScreen({ route, navigation }) {
             </Text>
           </View>
           <Text style={styles.wargaName}>{warga.nama}</Text>
+
+          {/* Badge Jabatan Warga */}
+          <View style={[styles.jabatanBadgeRow, { backgroundColor: getJabatanTheme(warga.jabatan).bg, borderColor: getJabatanTheme(warga.jabatan).border }]}>
+            <Shield size={13} color={getJabatanTheme(warga.jabatan).text} />
+            <Text style={[styles.jabatanBadgeText, { color: getJabatanTheme(warga.jabatan).text }]}>
+              {getJabatanLabel(warga.jabatan)}
+            </Text>
+            {isAdminLoggedIn && (
+              <TouchableOpacity
+                onPress={() => setJabatanModalOpen(true)}
+                style={styles.editJabatanBtn}
+                activeOpacity={0.7}
+              >
+                <Edit3 size={12} color={getJabatanTheme(warga.jabatan).text} />
+                <Text style={[styles.editJabatanBtnText, { color: getJabatanTheme(warga.jabatan).text }]}>
+                  Ubah
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           <Text style={styles.wargaSub}>
             Blok {warga.blok || 'A'} No. {warga.noRumah || '-'} • Kode #{warga.kodeUnik || '101'} • {rtName}
           </Text>
@@ -550,6 +582,63 @@ export default function DetailWargaScreen({ route, navigation }) {
           />
         </View>
       </AppModal>
+
+      {/* Modal Ubah Jabatan Warga */}
+      <AppModal
+        visible={jabatanModalOpen}
+        title="Ubah Jabatan Warga"
+        subtitle={`Tetapkan jabatan struktur lingkungan untuk ${warga.nama}`}
+        onClose={() => setJabatanModalOpen(false)}
+        footer={
+          <View style={{ width: '100%' }}>
+            <AppButton
+              title="Batal"
+              variant="secondary"
+              onPress={() => setJabatanModalOpen(false)}
+            />
+          </View>
+        }
+      >
+        <View style={{ gap: 8 }}>
+          {[
+            { key: 'warga', label: 'Warga Biasa', desc: 'Warga perumahan tanpa jabatan struktural', theme: getJabatanTheme('warga') },
+            { key: 'rt', label: 'Ketua / Pengurus RT', desc: 'Mengelola administrasi warga, iuran dan kas RT', theme: getJabatanTheme('rt') },
+            { key: 'rw', label: 'Ketua / Pengurus RW', desc: 'Mengoordinasi wilayah lingkungan dan pengurus RT', theme: getJabatanTheme('rw') },
+            { key: 'bendahara', label: 'Bendahara Keuangan', desc: 'Mengelola pembukuan kas, iuran warga & verifikasi bank', theme: getJabatanTheme('bendahara') },
+            { key: 'pengurus', label: 'Pengurus Fasum & Layanan', desc: 'Mengelola pelayanan aduan, fasum, surat & kegiatan', theme: getJabatanTheme('pengurus') },
+            { key: 'admin', label: 'Admin IT / Super Admin', desc: 'Hak akses penuh teknis sistem, database & kelola role', theme: getJabatanTheme('admin') }
+          ].map((item) => {
+            const isCurrent = (warga.jabatan || 'warga') === item.key
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={[
+                  styles.jabatanOptionCard,
+                  isCurrent && { borderColor: item.theme.badgeBg, backgroundColor: item.theme.bg }
+                ]}
+                onPress={() => handleUbahJabatan(item.key)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.jabatanOptionIcon, { backgroundColor: item.theme.badgeBg }]}>
+                  <Shield size={16} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.jabatanOptionTitle}>{item.label}</Text>
+                    {isCurrent && (
+                      <View style={[styles.activeCheckBadge, { backgroundColor: item.theme.badgeBg }]}>
+                        <CheckCircle2 size={11} color="#FFFFFF" />
+                        <Text style={styles.activeCheckBadgeText}>Aktif</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.jabatanOptionDesc}>{item.desc}</Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      </AppModal>
     </View>
   )
 }
@@ -561,7 +650,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 80
   },
   editHeaderBtn: {
     padding: 6
@@ -574,7 +663,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: radius.full,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs
@@ -587,6 +676,75 @@ const styles = StyleSheet.create({
   wargaName: {
     ...typography.h2,
     textAlign: 'center'
+  },
+  jabatanBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: 6,
+    marginBottom: 4
+  },
+  jabatanBadgeText: {
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  editJabatanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginLeft: 4
+  },
+  editJabatanBtnText: {
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  jabatanOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    backgroundColor: '#FFFFFF'
+  },
+  jabatanOptionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  jabatanOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary
+  },
+  jabatanOptionDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2
+  },
+  activeCheckBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6
+  },
+  activeCheckBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#FFFFFF'
   },
   wargaSub: {
     ...typography.caption,
@@ -642,7 +800,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: radius.sm
@@ -743,7 +901,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   jkBtnActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderColor: colors.primary
   },
   jkText: {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -30,9 +30,11 @@ import {
   Image as ImageIcon,
   X,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { uploadImageToSupabaseStorage } from '../api/supabase'
 import { useApp } from '../context/AppContext'
 import { colors, shadows, radius, spacing, typography } from '../utils/theme'
 import {
@@ -43,31 +45,85 @@ import {
   calculateTotalWithKodeUnik
 } from '../utils/formatters'
 import { copyToClipboard } from '../utils/clipboard'
+import { checkMootaMutation, getMootaBankDetail } from '../services/mootaService'
 import AppHeader from '../components/AppHeader'
+import ReceiptModal from '../components/ReceiptModal'
 
 export default function PembayaranScreen({ route, navigation }) {
   const { tagihan } = route.params || {}
-  const { bayarTagihan, config, warga, bankAccounts, qrisAccounts, rts } = useApp()
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
+  const { bayarTagihan, bayarTagihanOtomatisMoota, config, warga, bankAccounts, qrisAccounts, rts } = useApp()
 
   const targetWarga = warga.find((w) => w.id === tagihan?.wargaId) || {}
   const namaWarga = targetWarga.nama || tagihan?.namaWarga || 'Warga'
   const blok = targetWarga.blok || tagihan?.blok || 'A'
   const noRumah = targetWarga.noRumah || tagihan?.noRumah || '-'
 
-  const isRwScope = tagihan?.payment_scope === 'RW'
-  const targetOwnerId = isRwScope ? (config?.rw || 'rw-15') : (targetWarga.rt_id || tagihan?.target_payment_owner || 'rt-1')
-  const rtObj = rts.find((r) => r.id === targetOwnerId)
-  const recipientLabel = tagihan?.pembayaran_kepada || (isRwScope ? (config?.rw || 'RW 15') : (rtObj?.name || 'RT 01'))
+  // RT tempat tinggal warga yang menerbitkan iuran
+  const residentRtId = targetWarga.rt_id || tagihan?.target_payment_owner || 'rt-01-01'
+  const rtObj = rts.find((r) => r.id === residentRtId || r.number === targetWarga.rt || r.id === 'rt-1') || rts[0]
 
-  // Filter Bank & QRIS specifically for this payment scope & owner
-  const availableBanks = (bankAccounts || []).filter((b) => {
-    if (isRwScope) return b.owner_type === 'RW'
-    return b.owner_type === 'RT' && b.owner_id === targetOwnerId
+  // RW spesifik tempat tinggal warga (RW 01, bukan RW 01 - RW 05!)
+  const residentRwId = targetWarga.rw_id || rtObj?.rw_id || 'rw-01'
+  const rwNameClean = rtObj?.rw || (config?.rw && !config.rw.includes('-') ? config.rw : 'RW 01')
+  const rtNameClean = rtObj?.name || 'RT 01 / RW 01'
+
+  // Logika: Apakah iuran RW atau iuran RT
+  const isRwScope = tagihan?.payment_scope === 'RW'
+  const targetOwnerId = isRwScope ? residentRwId : (rtObj?.id || residentRtId)
+
+  // Label penerima yang jelas: Kas RT jika iuran RT, Kas RW jika iuran RW
+  const cleanRecipientFromTagihan = tagihan?.pembayaran_kepada && !tagihan.pembayaran_kepada.includes('-')
+    ? tagihan.pembayaran_kepada
+    : null
+
+  const recipientLabel = isRwScope
+    ? (cleanRecipientFromTagihan || `Kas ${rwNameClean}`)
+    : (cleanRecipientFromTagihan || `${rtNameClean}`)
+
+  // Live Moota Bank Account
+  const [mootaBank, setMootaBank] = useState({
+    id: 'Lagzqp0Pk42',
+    bank_id: 'Lagzqp0Pk42',
+    bank_name: 'Bank Transfer (Sandbox)',
+    account_number: '090908080777',
+    account_holder: 'Rafi Nurrahman',
+    is_primary: true
   })
 
+  useEffect(() => {
+    async function loadLiveBank() {
+      const b = await getMootaBankDetail()
+      if (b && b.account_number) {
+        setMootaBank({
+          ...b,
+          account_number: b.account_number || '090908080777',
+          account_holder: b.account_holder || b.username || 'Rafi Nurrahman',
+          bank_name: b.bank_name || 'Bank Transfer (Sandbox)'
+        })
+      }
+    }
+    loadLiveBank()
+  }, [])
+
+  // Seluruh pembayaran transfer terintegrasi ke rekening resmi Moota Sandbox (090908080777 a.n Rafi Nurrahman)
+  const officialMootaAccount = {
+    id: 'moota-official-bca',
+    bank_id: mootaBank?.bank_id || 'Lagzqp0Pk42',
+    bank_name: mootaBank?.bank_name || 'Bank Transfer (Sandbox)',
+    account_number: mootaBank?.account_number || '090908080777',
+    account_holder: mootaBank?.account_holder || 'Rafi Nurrahman',
+    is_primary: true
+  }
+
+  const availableBanks = [officialMootaAccount]
+
   const availableQris = (qrisAccounts || []).filter((q) => {
-    if (isRwScope) return q.owner_type === 'RW'
-    return q.owner_type === 'RT' && q.owner_id === targetOwnerId
+    if (isRwScope) {
+      return q.owner_type === 'RW' && (q.owner_id === residentRwId || q.owner_id === 'rw-01' || q.owner_id === 'RW')
+    }
+    return q.owner_type === 'RT' && (q.owner_id === targetOwnerId || q.owner_id === residentRtId)
   })
 
   const kodeUnikWarga = getKodeUnikWarga(targetWarga)
@@ -82,7 +138,9 @@ export default function PembayaranScreen({ route, navigation }) {
   const [keterangan, setKeterangan] = useState('')
   const [buktiPlaceholder, setBuktiPlaceholder] = useState('TRX-' + Math.floor(100000 + Math.random() * 900000))
   
-  // Image Proof States & Unique Code Popup
+  // Moota Auto Verification & Image Proof States
+  const [checkingMoota, setCheckingMoota] = useState(false)
+  const [showManualForm, setShowManualForm] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
   const [pickerModalOpen, setPickerModalOpen] = useState(false)
   const [qrisModalOpen, setQrisModalOpen] = useState(false)
@@ -90,13 +148,94 @@ export default function PembayaranScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
-  const activeBank = availableBanks.find((b) => b.id === selectedBankId) || availableBanks[0] || {
-    bank_name: 'BCA',
-    account_number: isRwScope ? '7788990011' : (rtObj?.rekening || '8730192831'),
-    account_holder: `Kas ${recipientLabel}`
-  }
+  // Rekening aktif yang dipilih user
+  const selectedBank = availableBanks.find((b) => b.id === selectedBankId) || availableBanks[0]
+  const activeBank = selectedBank || mootaBank
 
   const activeQris = availableQris.find((q) => q.id === selectedQrisId) || availableQris[0]
+
+  const handleSimulasiBayarMootaSandbox = async () => {
+    Alert.alert(
+      'Simulasi Pembayaran Moota Sandbox',
+      `Simulasikan transfer dana sejumlah ${formatRupiah(exactNominal)} ke rekening Moota Sandbox (${activeBank.account_number} a.n ${activeBank.account_holder})?\n\nTagihan akan langsung diverifikasi LUNAS, kwitansi diterbitkan, dan dana masuk dicatat ke Kas.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: '⚡ Simulasikan Lunas',
+          onPress: async () => {
+            setCheckingMoota(true)
+            try {
+              const simulatedMutation = {
+                id: `sim-moota-${Date.now()}`,
+                mutation_id: `MUT-${Date.now()}`,
+                bank_id: activeBank.bank_id || 'Lagzqp0Pk42',
+                amount: exactNominal,
+                type: 'CR',
+                description: `Simulasi Transfer Sandbox IPL Warga ${namaWarga} (Blok ${blok}/${noRumah})`,
+                date: new Date().toISOString()
+              }
+              const verifyRes = await bayarTagihanOtomatisMoota(tagihan.id, simulatedMutation)
+              if (verifyRes.success) {
+                setReceiptData({
+                  receiptId: verifyRes.noKwitansi || `KW/2026/10/B12-004`,
+                  amount: exactNominal,
+                  paidAt: new Date(),
+                  residentName: namaWarga,
+                  unitCode: `Blok ${blok} / No. ${noRumah}`,
+                  paymentMethod: metode === 'QRIS' ? 'QRIS Dinamis' : 'Transfer Bank BCA',
+                  recipientName: recipientLabel,
+                  status: 'paid'
+                })
+                setReceiptModalVisible(true)
+              } else {
+                Alert.alert('Info', verifyRes.message || 'Tagihan sudah lunas.')
+              }
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Gagal simulasi pembayaran')
+            } finally {
+              setCheckingMoota(false)
+            }
+          }
+        }
+      ]
+    )
+  }
+
+  const handleCekMootaOtomatis = async () => {
+    setCheckingMoota(true)
+    try {
+      const res = await checkMootaMutation(exactNominal, activeBank.bank_id || 'Lagzqp0Pk42')
+      if (res.found && res.mutation) {
+        const verifyRes = await bayarTagihanOtomatisMoota(tagihan.id, res.mutation)
+        if (verifyRes.success) {
+          Alert.alert(
+            '🎉 PEMBAYARAN BERHASIL & LUNAS!',
+            `Transfer sejumlah ${formatRupiah(exactNominal)} terdeteksi di Moota Sandbox!\n\nStatus Tagihan: LUNAS OTOMATIS\nNo Kwitansi: ${verifyRes.noKwitansi}\n\nTerima kasih telah membayar iuran tepat waktu.`,
+            [{ text: 'Lihat Kwitansi', onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' }) }]
+          )
+        } else {
+          Alert.alert('Info', verifyRes.message || 'Pembayaran telah terverifikasi.')
+        }
+      } else {
+        Alert.alert(
+          'Mutasi Belum Terdeteksi',
+          `Belum ada mutasi masuk sebesar ${formatRupiah(exactNominal)} di rekening Moota Sandbox (${activeBank.account_number} a.n ${activeBank.account_holder}).\n\nPetunjuk:\n1. Pastikan Anda sudah transfer ke rekening yang tertera.\n2. Pastikan nominal transfer persis ${formatRupiah(exactNominal)} (termasuk 3 digit kode unik ${getAngkaKodeUnik(targetWarga)}).\n3. Untuk simulasi pengujian, Anda dapat klik tombol "Simulasikan Sukses (Sandbox)" di bawah.`,
+          [
+            { text: 'Tutup', style: 'cancel' },
+            { text: '🧪 Simulasikan Sukses (Sandbox)', onPress: handleSimulasiBayarMootaSandbox },
+            { text: 'Cek Lagi', onPress: handleCekMootaOtomatis }
+          ]
+        )
+      }
+    } catch (err) {
+      Alert.alert(
+        'Koneksi Moota Terkendala',
+        err.message || 'Gagal menghubungi server Moota. Anda dapat menggunakan opsi unggah bukti manual di bawah.'
+      )
+    } finally {
+      setCheckingMoota(false)
+    }
+  }
 
   const handleCopy = async (text, label) => {
     await copyToClipboard(text)
@@ -122,7 +261,7 @@ export default function PembayaranScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          quality: 0.7,
+          quality: 0.35,
           base64: true
         })
 
@@ -154,7 +293,7 @@ export default function PembayaranScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
-          quality: 0.7,
+          quality: 0.35,
           base64: true
         })
 
@@ -197,9 +336,9 @@ export default function PembayaranScreen({ route, navigation }) {
   }
 
   const handleKirimBayar = async () => {
-    const nom = Number(nominalBayar)
+    const nom = Number(nominalBayar || exactNominal)
     if (isNaN(nom) || nom <= 0) {
-      Alert.alert('Perhatian', 'Nominal transfer harus berupa angka yang valid!')
+      Alert.alert('Perhatian', 'Nominal transfer tidak valid!')
       return
     }
 
@@ -213,14 +352,30 @@ export default function PembayaranScreen({ route, navigation }) {
 
     setLoading(true)
     try {
-      const proofPayloadUrl = selectedImage ? (selectedImage.base64 || selectedImage.uri) : null
+      let proofPayloadUrl = null
+      if (selectedImage) {
+        const uploadRes = await uploadImageToSupabaseStorage({
+          bucket: 'bukti-transfer',
+          path: `tagihan/${tagihan?.id || 'trx'}/${Date.now()}_${selectedImage.fileName || 'bukti.jpg'}`,
+          base64: selectedImage.base64,
+          uri: selectedImage.uri,
+          contentType: 'image/jpeg'
+        })
+
+        if (uploadRes.success && uploadRes.publicUrl) {
+          proofPayloadUrl = uploadRes.publicUrl
+        } else {
+          proofPayloadUrl = selectedImage.base64 || selectedImage.uri
+        }
+      }
+
       const res = await bayarTagihan(tagihan.id, {
         metode: metode === 'Transfer' ? `Transfer ${activeBank.bank_name}` : metode === 'QRIS' ? 'QRIS Instan' : 'Tunai / Cash',
         nominal: nom,
-        tanggalBayar: tanggalBayar,
+        tanggalBayar: tanggalBayar || new Date().toISOString().slice(0, 10),
         bankAccountId: metode === 'Transfer' ? activeBank.id : null,
         qrisAccountId: metode === 'QRIS' ? activeQris?.id : null,
-        buktiBayar: buktiPlaceholder.trim() || 'TRX-APP-' + Math.floor(100000 + Math.random() * 900000),
+        buktiBayar: (buktiPlaceholder || '').trim() || 'TRX-APP-' + Math.floor(100000 + Math.random() * 900000),
         buktiTransferUrl: proofPayloadUrl,
         buktiFoto: proofPayloadUrl,
         fileName: selectedImage?.fileName,
@@ -290,7 +445,7 @@ export default function PembayaranScreen({ route, navigation }) {
           <Text style={styles.summaryAmount}>{formatRupiah(exactNominal)}</Text>
 
           <View style={styles.kodeUnikBadgeSummary}>
-            <Sparkles size={13} color="#D97706" />
+            <ShieldCheck size={13} color="#D97706" />
             <Text style={styles.kodeUnikBadgeSummaryText}>
               Termasuk 3 Digit Kode Unik: <Text style={{ fontWeight: '800' }}>{getAngkaKodeUnik(targetWarga)} ({kodeUnikWarga})</Text>
             </Text>
@@ -308,6 +463,30 @@ export default function PembayaranScreen({ route, navigation }) {
           <Text style={styles.summaryPeriod}>
             Periode Bulan {tagihan?.bulan}/{tagihan?.tahun} • {namaWarga} (Blok {blok}/{noRumah})
           </Text>
+
+          {/* Rincian Pos Tagihan Detail */}
+          <View style={styles.breakdownBox}>
+            <Text style={styles.breakdownTitle}>Rincian Pos Pembayaran:</Text>
+            {tagihan?.rincian && tagihan.rincian.length > 0 ? (
+              tagihan.rincian.map((item, idx) => (
+                <View key={idx} style={[styles.breakdownRow, idx === tagihan.rincian.length - 1 && { borderBottomWidth: 0 }]}>
+                  <Text style={styles.breakdownItemLabel} numberOfLines={1}>{item.nama}</Text>
+                  <Text style={styles.breakdownItemVal}>{formatRupiah(item.nominal)}</Text>
+                </View>
+              ))
+            ) : (
+              <>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownItemLabel}>Iuran Pokok {recipientLabel}</Text>
+                  <Text style={styles.breakdownItemVal}>{formatRupiah(Math.floor((Number(tagihan?.total || 120000)) / 1000) * 1000)}</Text>
+                </View>
+                <View style={[styles.breakdownRow, { borderBottomWidth: 0 }]}>
+                  <Text style={styles.breakdownItemLabel}>Kode Unik 3 Digit ({kodeUnikWarga})</Text>
+                  <Text style={[styles.breakdownItemVal, { color: '#D97706', fontWeight: '800' }]}>+Rp {getAngkaKodeUnik(targetWarga)}</Text>
+                </View>
+              </>
+            )}
+          </View>
         </View>
 
         {/* Riwayat Pengajuan Bukti Sebelumnya (Jika ada) */}
@@ -394,26 +573,16 @@ export default function PembayaranScreen({ route, navigation }) {
         {/* DETAIL METODE: 1. TRANSFER BANK */}
         {metode === 'Transfer' && (
           <View style={styles.bankCard}>
-            <Text style={styles.bankTitle}>Rekening Kas Resmi {recipientLabel}</Text>
-
-            {/* Pilihan Rekening jika tersedia lebih dari 1 */}
-            {availableBanks.length > 1 && (
-              <View style={styles.bankPickerRow}>
-                {availableBanks.map((b) => (
-                  <TouchableOpacity
-                    key={b.id}
-                    style={[styles.bankPickChip, selectedBankId === b.id && styles.bankPickChipActive]}
-                    onPress={() => setSelectedBankId(b.id)}
-                  >
-                    <Text style={[styles.bankPickText, selectedBankId === b.id && styles.bankPickTextActive]}>
-                      {b.bank_name} {b.is_primary ? '★' : ''}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={styles.bankTitle}>Rekening Kas Resmi (Moota Sandbox Auto)</Text>
+              <View style={styles.mootaLiveBadge}>
+                <Text style={styles.mootaLiveBadgeText}>MUTASI ONLINE</Text>
               </View>
-            )}
+            </View>
 
-            <Text style={styles.bankName}>Bank {activeBank.bank_name}</Text>
+            <Text style={styles.bankName}>
+              {(activeBank.bank_name || 'BCA').toLowerCase().startsWith('bank') ? activeBank.bank_name : `Bank ${activeBank.bank_name}`}
+            </Text>
             <View style={styles.rekRow}>
               <Text style={styles.rekNumber}>{activeBank.account_number}</Text>
               <TouchableOpacity
@@ -425,7 +594,84 @@ export default function PembayaranScreen({ route, navigation }) {
                 <Text style={styles.copyText}>Salin</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.rekOwner}>a.n {activeBank.account_holder || `Kas ${recipientLabel}`}</Text>
+            <Text style={styles.rekOwner}>a.n {activeBank.account_holder}</Text>
+          </View>
+        )}
+
+        {/* VERIFIKASI OTOMATIS MOOTA SANDBOX (METODE TRANSFER) */}
+        {metode === 'Transfer' && (
+          <View style={styles.mootaCard}>
+            <View style={styles.mootaBadgeRow}>
+              <View style={styles.mootaBadge}>
+                <Zap size={14} color="#D97706" />
+                <Text style={styles.mootaBadgeText}>VERIFIKASI OTOMATIS MOOTA SANDBOX</Text>
+              </View>
+              <View style={styles.mootaLiveDotWrap}>
+                <View style={styles.mootaLiveDot} />
+                <Text style={styles.mootaStatusOnline}>Real-time Online</Text>
+              </View>
+            </View>
+
+            <Text style={styles.mootaHeading}>⚡ Pembayaran Otomatis Tanpa Upload Struk</Text>
+            <Text style={styles.mootaText}>
+              1. Transfer persis <Text style={{ fontWeight: '800', color: colors.primary }}>{formatRupiah(exactNominal)}</Text> ke rekening di atas.
+            </Text>
+            <Text style={styles.mootaText}>
+              2. Nominal di atas sudah termasuk 3 digit kode unik khusus Anda (<Text style={{ fontWeight: '800', color: '#B45309' }}>{getAngkaKodeUnik(targetWarga)}</Text>).
+            </Text>
+            <Text style={styles.mootaText}>
+              3. Setelah Anda melakukan transfer, klik tombol di bawah untuk verifikasi mutasi rekening secara instan:
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.mootaCheckBtn, checkingMoota && { opacity: 0.75 }]}
+              onPress={handleCekMootaOtomatis}
+              disabled={checkingMoota}
+              activeOpacity={0.85}
+            >
+              {checkingMoota ? (
+                <ActivityIndicator color={colors.white} size="small" style={{ marginRight: 8 }} />
+              ) : (
+                <Zap size={18} color="#FEF08A" style={{ marginRight: 8 }} />
+              )}
+              <Text style={styles.mootaCheckBtnText}>
+                {checkingMoota ? 'Memeriksa Mutasi Moota...' : '⚡ Cek Pembayaran Otomatis (Moota)'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.mootaCheckBtn,
+                { backgroundColor: '#0284C7', marginTop: 8 },
+                checkingMoota && { opacity: 0.75 }
+              ]}
+              onPress={handleSimulasiBayarMootaSandbox}
+              disabled={checkingMoota}
+              activeOpacity={0.85}
+            >
+              <Sparkles size={18} color="#E0F2FE" style={{ marginRight: 8 }} />
+              <Text style={styles.mootaCheckBtnText}>
+                🧪 Simulasi Transfer Masuk (Uji Coba Sandbox)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.manualFallbackToggle}
+              onPress={() => setShowManualForm(!showManualForm)}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <Upload size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                <Text style={styles.manualFallbackToggleText}>
+                  {showManualForm ? 'Sembunyikan Formulir Bukti Manual' : 'Unggah Bukti Transfer Manual (Opsional / Cadangan)'}
+                </Text>
+              </View>
+              {showManualForm ? (
+                <ChevronUp size={16} color={colors.textSecondary} />
+              ) : (
+                <ChevronDown size={16} color={colors.textSecondary} />
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
@@ -498,134 +744,94 @@ export default function PembayaranScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Form Upload Bukti & Konfirmasi */}
-        <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Formulir Konfirmasi Pembayaran</Text>
+        {/* Form Upload Bukti Pembayaran */}
+        {(metode !== 'Transfer' || showManualForm) && (
+          <View style={styles.formCard}>
+            <View style={styles.formCardHeaderRow}>
+              <Text style={styles.formTitle}>
+                {metode === 'Transfer' ? 'Upload Bukti Transfer Manual' : 'Upload Bukti Pembayaran'}
+              </Text>
+              {metode === 'Transfer' && (
+                <TouchableOpacity onPress={() => setShowManualForm(false)}>
+                  <X size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nominal Ditransfer (Rp) *</Text>
-            <TextInput
-              style={styles.input}
-              value={nominalBayar}
-              onChangeText={setNominalBayar}
-              keyboardType="numeric"
-              placeholder="120000"
-              placeholderTextColor={colors.textMuted}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Tanggal Pembayaran *</Text>
-            <TextInput
-              style={styles.input}
-              value={tanggalBayar}
-              onChangeText={setTanggalBayar}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textMuted}
-            />
-          </View>
-
-          {metode !== 'Cash' && (
-            <>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Nomor Referensi / Kode Transaksi</Text>
-                <TextInput
-                  style={styles.input}
-                  value={buktiPlaceholder}
-                  onChangeText={setBuktiPlaceholder}
-                  placeholder="Contoh: TRX-992019 / No Referensi M-Banking"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-
-              {/* Upload / Lampiran Bukti Foto Transfer */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Foto Bukti Transfer / Struk QRIS <Text style={{ color: colors.danger }}>* (Wajib)</Text></Text>
-                
-                {selectedImage ? (
-                  <View style={styles.proofPreviewCard}>
-                    <Image source={{ uri: selectedImage.uri }} style={styles.proofImage} resizeMode="cover" />
-                    <View style={styles.proofInfoRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.proofTitle}>Foto Bukti Terpilih ✓</Text>
-                        <Text style={styles.proofSub} numberOfLines={1}>{selectedImage.fileName}</Text>
-                        <Text style={styles.proofSubSize}>Ukuran: {selectedImage.fileSize}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.changePhotoBtn}
-                        onPress={() => setPickerModalOpen(true)}
-                        activeOpacity={0.8}
-                      >
-                        <RefreshCw size={14} color={colors.primary} />
-                        <Text style={styles.changePhotoBtnText}>Ganti</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.proofRemoveBtn}
-                        onPress={() => setSelectedImage(null)}
-                        activeOpacity={0.8}
-                      >
-                        <X size={14} color={colors.danger} />
-                        <Text style={styles.proofRemoveText}>Hapus</Text>
-                      </TouchableOpacity>
+            {/* Upload Bukti Foto Pembayaran */}
+            <View style={[styles.inputGroup, { marginBottom: 14 }]}>
+              {selectedImage ? (
+                <View style={styles.proofPreviewCard}>
+                  <Image source={{ uri: selectedImage.uri }} style={styles.proofImage} resizeMode="cover" />
+                  <View style={styles.proofInfoRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proofTitle}>Foto Bukti Terpilih ✓</Text>
+                      <Text style={styles.proofSub} numberOfLines={1}>
+                        {selectedImage.fileName}
+                      </Text>
+                      <Text style={styles.proofSubSize}>Ukuran: {selectedImage.fileSize}</Text>
                     </View>
-                  </View>
-                ) : (
-                  <View style={styles.uploadArea}>
                     <TouchableOpacity
-                      style={styles.uploadBtnChoice}
+                      style={styles.changePhotoBtn}
                       onPress={() => setPickerModalOpen(true)}
-                      activeOpacity={0.85}
+                      activeOpacity={0.8}
                     >
-                      <Upload size={20} color={colors.white} />
-                      <Text style={styles.uploadBtnText}>Upload Bukti Pembayaran</Text>
+                      <RefreshCw size={14} color={colors.primary} />
+                      <Text style={styles.changePhotoBtnText}>Ganti</Text>
                     </TouchableOpacity>
-                    <Text style={styles.uploadHintText}>
-                      Pilih dari Galeri atau Ambil Foto Kamera (Maks 5 MB, JPG/PNG)
-                    </Text>
+                    <TouchableOpacity
+                      style={styles.proofRemoveBtn}
+                      onPress={() => setSelectedImage(null)}
+                      activeOpacity={0.8}
+                    >
+                      <X size={14} color={colors.danger} />
+                      <Text style={styles.proofRemoveText}>Hapus</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            </>
-          )}
+                </View>
+              ) : (
+                <View style={styles.uploadArea}>
+                  <TouchableOpacity
+                    style={styles.uploadBtnChoice}
+                    onPress={() => setPickerModalOpen(true)}
+                    activeOpacity={0.85}
+                  >
+                    <Upload size={20} color={colors.white} />
+                    <Text style={styles.uploadBtnText}>Upload Bukti Pembayaran</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.uploadHintText}>
+                    Pilih dari Galeri atau Ambil Foto Kamera (Maks 5 MB, JPG/PNG)
+                  </Text>
+                </View>
+              )}
+            </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Catatan Tambahan (Opsional)</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={keterangan}
-              onChangeText={setKeterangan}
-              placeholder="Contoh: Ditransfer dari rekening atas nama Ibu Siti..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              numberOfLines={2}
-            />
+            <View style={styles.infoAlert}>
+              <Info size={16} color={colors.info} style={{ marginRight: 8, marginTop: 1 }} />
+              <Text style={styles.infoAlertText}>
+                Pembayaran ditujukan kepada <Text style={{ fontWeight: '800' }}>{recipientLabel}</Text>. Setelah dikirim, pengurus {recipientLabel} akan memverifikasi bukti Anda.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.btnDisabled]}
+              onPress={handleKirimBayar}
+              disabled={loading}
+              activeOpacity={0.88}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <>
+                  <Upload size={18} color={colors.white} style={{ marginRight: 8 }} />
+                  <Text style={styles.submitBtnText}>
+                    {isPerluDiperbaiki ? 'Upload Ulang Bukti Pembayaran' : 'Kirim Bukti Pembayaran'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
-
-          <View style={styles.infoAlert}>
-            <Info size={16} color={colors.info} style={{ marginRight: 8, marginTop: 1 }} />
-            <Text style={styles.infoAlertText}>
-              Pembayaran ditujukan kepada <Text style={{ fontWeight: '800' }}>{recipientLabel}</Text>. Setelah dikirim, pengurus {recipientLabel} akan memverifikasi mutasi.
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.submitBtn, loading && styles.btnDisabled]}
-            onPress={handleKirimBayar}
-            disabled={loading}
-            activeOpacity={0.88}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <>
-                <Upload size={18} color={colors.white} style={{ marginRight: 8 }} />
-                <Text style={styles.submitBtnText}>
-                  {isPerluDiperbaiki ? 'Upload Ulang Bukti Pembayaran' : 'Kirim Bukti Pembayaran'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        )}
       </ScrollView>
 
       {/* POP-UP PENGINGAT 3 DIGIT KODE UNIK WARGA */}
@@ -639,7 +845,7 @@ export default function PembayaranScreen({ route, navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.uniqueModalCard}>
             <View style={styles.uniqueModalIconWrap}>
-              <Sparkles size={32} color="#D97706" />
+              <ShieldCheck size={32} color="#D97706" />
             </View>
             <Text style={styles.uniqueModalTitle}>PENTING: Bayar Sesuai 3 Digit Kode Unik!</Text>
             <Text style={styles.uniqueModalDesc}>
@@ -793,6 +999,16 @@ export default function PembayaranScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* §4.5 Modal Kuitansi (Bottom Sheet) */}
+      <ReceiptModal
+        visible={receiptModalVisible}
+        data={receiptData}
+        onClose={() => {
+          setReceiptModalVisible(false)
+          navigation.navigate('Main', { screen: 'TagihanTab' })
+        }}
+      />
     </View>
   )
 }
@@ -804,7 +1020,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 60
+    paddingBottom: 80
   },
   rejectionBanner: {
     backgroundColor: '#FEF2F2',
@@ -930,6 +1146,42 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 6,
     textAlign: 'center'
+  },
+  breakdownBox: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    marginTop: 12
+  },
+  breakdownTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  },
+  breakdownItemLabel: {
+    fontSize: 12,
+    color: colors.textMain,
+    flex: 1,
+    paddingRight: 8
+  },
+  breakdownItemVal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMain
   },
 
   /* UNIQUE CODE MODAL STYLES */
@@ -1364,7 +1616,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 13,
-    ...shadows.redGlow
+    ...shadows.soft
   },
   btnDisabled: {
     opacity: 0.6
@@ -1393,10 +1645,10 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 10,
     paddingVertical: 8,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FECACA'
+    borderColor: '#A7F3D0'
   },
   zoomQrisBtnText: {
     fontSize: 12,
@@ -1422,7 +1674,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     width: '100%',
-    ...shadows.redGlow
+    ...shadows.soft
   },
   uploadBtnText: {
     fontSize: 13,
@@ -1664,5 +1916,104 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF'
+  },
+  // Moota Auto Verification Styles
+  mootaCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#FEF3C7',
+    ...shadows.sm
+  },
+  mootaBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  mootaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8
+  },
+  mootaBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B45309',
+    marginLeft: 4,
+    letterSpacing: 0.5
+  },
+  mootaLiveDotWrap: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  mootaLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+    marginRight: 5
+  },
+  mootaStatusOnline: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669'
+  },
+  mootaHeading: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 8
+  },
+  mootaText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 6
+  },
+  mootaCheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563EB',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 10,
+    marginBottom: 10,
+    ...shadows.md
+  },
+  mootaCheckBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF'
+  },
+  manualFallbackToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4
+  },
+  manualFallbackToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary
+  },
+  formCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12
   }
 })

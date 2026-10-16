@@ -19,7 +19,8 @@ import {
   MapPin,
   CheckCircle2,
   Users,
-  Edit3
+  Edit3,
+  Repeat
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import TopAppBar from '../components/TopAppBar'
@@ -28,7 +29,22 @@ import AppButton from '../components/AppButton'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 
 export default function ProfileScreen({ navigation }) {
-  const { currentUser, currentRT, currentWarga, logout, isWarga, isAdminLoggedIn } = useApp()
+  const {
+    currentUser,
+    currentRT,
+    currentWarga,
+    logout,
+    isWarga,
+    isRT,
+    isAdminLoggedIn,
+    hasDualRole,
+    activeMode,
+    toggleActiveMode,
+    jabatanLabel,
+    jabatanShortLabel,
+    jabatanTheme,
+    userJabatan
+  } = useApp()
 
   const handleLogout = () => {
     Alert.alert('Konfirmasi Keluar', 'Apakah Anda yakin ingin keluar dari akun ini?', [
@@ -44,14 +60,8 @@ export default function ProfileScreen({ navigation }) {
     ])
   }
 
-  const roleName =
-    currentUser?.role === 'admin'
-      ? 'Super Administrator RW'
-      : currentUser?.role === 'rt'
-      ? `Ketua / Pengurus ${currentRT?.name || 'RT 01'}`
-      : `Warga ${currentWarga?.blok ? `Blok ${currentWarga.blok}/${currentWarga.noRumah}` : 'Tetap'}`
-
-  const phone = currentWarga?.noHp || (currentUser?.role === 'rt' ? '081234567890' : '081122334455')
+  const roleName = jabatanLabel || (currentUser?.role === 'admin' ? 'Super Administrator (IT)' : 'Warga')
+  const phone = currentWarga?.noHp || (userJabatan === 'rt' ? '081234567890' : '081122334455')
   const blokText = currentWarga?.blok ? `Blok ${currentWarga.blok} No. ${currentWarga.noRumah}` : 'Sekretariat Pengurus'
   const rtRwText = currentRT?.name ? `${currentRT.name} / RW 15` : 'RT 01 / RW 15'
 
@@ -69,11 +79,50 @@ export default function ProfileScreen({ navigation }) {
           </View>
 
           <Text style={styles.userName} numberOfLines={1}>{currentUser?.name || 'Pengguna'}</Text>
-          <Text style={styles.userRole} numberOfLines={1}>{roleName}</Text>
+          
+          <View style={[styles.jabatanPill, { backgroundColor: jabatanTheme.bg, borderColor: jabatanTheme.border }]}>
+            <Shield size={12} color={jabatanTheme.text} />
+            <Text style={[styles.jabatanPillText, { color: jabatanTheme.text }]}>{roleName}</Text>
+          </View>
+
           <View style={styles.usernamePill}>
             <Text style={styles.usernameText}>@{currentUser?.username}</Text>
           </View>
         </AppCard>
+
+        {/* Switch Mode Card for Users with Jabatan (RT & RW adalah akun struktural murni, tidak bisa ganti role) */}
+        {hasDualRole && !isRT && !isRW && (
+          <AppCard style={styles.switchModeCard}>
+            <TouchableOpacity
+              style={styles.switchModeRow}
+              onPress={toggleActiveMode}
+              activeOpacity={0.82}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel={`Ganti tampilan mode, saat ini mode ${activeMode === 'jabatan' ? jabatanShortLabel : 'Warga'}`}
+            >
+              <View style={[styles.switchModeIconWrap, { backgroundColor: '#ECFDF5' }]}>
+                <Repeat size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.switchModeTitle}>Ganti Tampilan Mode</Text>
+                  <View style={[styles.activeModePill, { backgroundColor: activeMode === 'jabatan' ? jabatanTheme.badgeBg : '#2563EB' }]}>
+                    <Text style={styles.activeModePillText}>
+                      {activeMode === 'jabatan' ? jabatanShortLabel : 'Warga'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.switchModeSub}>
+                  {activeMode === 'jabatan'
+                    ? 'Beralih ke tampilan tagihan warga pribadi'
+                    : `Beralih ke tampilan operasional ${jabatanShortLabel}`}
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.primary} />
+            </TouchableOpacity>
+          </AppCard>
+        )}
 
         {/* Informasi Akun Card */}
         <AppCard style={styles.infoCard}>
@@ -117,6 +166,9 @@ export default function ProfileScreen({ navigation }) {
               style={styles.menuRow}
               onPress={() => navigation.navigate('DetailWarga', { warga: currentWarga })}
               activeOpacity={0.8}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="Data Kartu Keluarga & Anggota"
             >
               <View style={styles.menuIconWrap}>
                 <Users size={16} color={colors.primary} />
@@ -131,6 +183,9 @@ export default function ProfileScreen({ navigation }) {
               style={styles.menuRow}
               onPress={() => navigation.navigate('Pengaturan')}
               activeOpacity={0.8}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="Pengaturan Sistem & Pos Iuran"
             >
               <View style={styles.menuIconWrap}>
                 <Settings size={16} color={colors.primary} />
@@ -144,6 +199,9 @@ export default function ProfileScreen({ navigation }) {
             style={[styles.menuRow, { borderBottomWidth: 0 }]}
             onPress={() => navigation.navigate('DataAkses')}
             activeOpacity={0.8}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel="Akun Login Demo & Keamanan"
           >
             <View style={styles.menuIconWrap}>
               <Shield size={16} color={colors.primary} />
@@ -174,7 +232,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 190
   },
   userCard: {
     alignItems: 'center',
@@ -184,7 +242,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: radius.full,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs
@@ -217,6 +277,59 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '600'
   },
+  jabatanPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: 4
+  },
+  jabatanPillText: {
+    fontSize: 11.5,
+    fontWeight: '700'
+  },
+  switchModeCard: {
+    marginBottom: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: spacing.sm + 4
+  },
+  switchModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  switchModeIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  switchModeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary
+  },
+  activeModePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 8
+  },
+  activeModePillText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#FFFFFF'
+  },
+  switchModeSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2
+  },
   infoCard: {
     marginBottom: spacing.md
   },
@@ -235,7 +348,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radius.md,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm
@@ -268,7 +381,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radius.md,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm

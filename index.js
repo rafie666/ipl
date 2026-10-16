@@ -1,8 +1,24 @@
+import './src/utils/customAlert';
 import { registerRootComponent } from 'expo';
+
+// Ignore non-app errors from third-party Chrome extensions (e.g. chrome-extension://...)
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener(
+    'error',
+    (event) => {
+      if (
+        event?.filename &&
+        (event.filename.startsWith('chrome-extension:') ||
+          event.filename.startsWith('moz-extension:'))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+}
 
 import App from './App';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
 registerRootComponent(App);

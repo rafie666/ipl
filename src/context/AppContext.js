@@ -8,6 +8,7 @@ import {
   resetAllStorageToDefault,
   STORAGE_KEYS
 } from '../utils/storage'
+import { INITIAL_KAS } from '../data/initialData'
 import {
   apiLogin,
   filterResidentsByRole,
@@ -18,14 +19,34 @@ import {
   isUsernameAvailable
 } from '../services/authService'
 import { hashPassword } from '../utils/crypto'
-import { supabase, isSupabaseConfigured } from '../api/supabase'
+import { supabase, isSupabaseConfigured, initCustomSupabaseCredentials } from '../api/supabase'
 import {
   calculateTotalWithKodeUnik,
   getKodeUnikWarga,
   getAngkaKodeUnik,
   getKodeUnikLengkap,
-  generateNextKodeUnik
+  generateNextKodeUnik,
+  getJabatanLabel,
+  getJabatanShortLabel,
+  getJabatanTheme
 } from '../utils/formatters'
+import {
+  calculateNextRunDate,
+  getEffectivePublishDay,
+  getEffectiveDueDay,
+  buildAutoBillingInvoices,
+  getJakartaDate,
+  getNamaBulan
+} from '../utils/billingScheduler'
+import {
+  registerForPushNotificationsAsync,
+  syncPushTokenWithBackend,
+  removePushTokenFromBackend,
+  sendLocalNotification,
+  getLaravelApiUrl,
+  setLaravelApiUrl as saveLaravelApiUrl,
+  STORAGE_KEY_PUSH_TOKEN
+} from '../services/notificationService'
 
 const AppContext = createContext()
 
@@ -33,8 +54,10 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [activeMode, setActiveMode] = useState('jabatan') // 'jabatan' | 'warga'
   const [users, setUsers] = useState([])
   const [rts, setRts] = useState([])
+  const [rws, setRws] = useState([])
   const [adminAuth, setAdminAuth] = useState(null)
 
   // Data states
@@ -48,52 +71,214 @@ export function AppProvider({ children }) {
   const [pengaduan, setPengaduan] = useState([])
   const [surat, setSurat] = useState([])
   const [kontakDarurat, setKontakDarurat] = useState([])
+  const [jadwalSatpam, setJadwalSatpam] = useState([])
+  const [petugasSatpam, setPetugasSatpam] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
   const [qrisAccounts, setQrisAccounts] = useState([])
   const [notifications, setNotifications] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
+  const [expoPushToken, setExpoPushToken] = useState(null)
+  const [laravelApiUrl, setLaravelApiUrlState] = useState('http://10.0.2.2:8000')
+  const [notificationPermissionStatus, setNotificationPermissionStatus] = useState(null)
 
   // Load cache on start
   useEffect(() => {
     async function init() {
       try {
+        await initCustomSupabaseCredentials()
         const initial = await loadInitialStorage()
-        setConfig(initial.config)
+
+        // Normalisasi config jika masih tersimpan demo RW 01 - RW 05
+        let initialConfig = initial.config
+        if (initialConfig?.rw && initialConfig.rw.includes('-')) {
+          initialConfig = {
+            ...initialConfig,
+            rw: 'RW 01',
+            rtRw: 'RT 01 / RW 01'
+          }
+        }
+        if (initialConfig?.rekeningRw !== 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman' || initialConfig?.rekeningBank !== 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman') {
+          initialConfig = {
+            ...initialConfig,
+            rekeningRw: 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman',
+            rekeningBank: 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman'
+          }
+        }
+        await saveStorageItem(STORAGE_KEYS.CONFIG, initialConfig)
+        setConfig(initialConfig)
+
+        // Normalisasi tagihan jika masih ada yang bertuliskan RW 01 - RW 05
+        const sanitizedTagihan = (initial.tagihan || []).map((t) => {
+          if (t.pembayaran_kepada && t.pembayaran_kepada.includes('-')) {
+            return { ...t, pembayaran_kepada: 'RW 01' }
+          }
+          return t
+        })
+
+        const mootaOfficialAccount = {
+          id: 'ba-moota-main',
+          owner_type: 'ALL',
+          owner_id: 'moota',
+          bank_name: 'Bank Transfer (Sandbox)',
+          account_number: '090908080777',
+          account_holder: 'Rafi Nurrahman',
+          is_primary: true,
+          is_active: true
+        }
+        const initialBanks = (initial.bankAccounts || []).filter(b => b.account_number !== '78090908080777' && b.account_number !== '090908080777' && b.id !== 'ba-moota-main')
+        const sanitizedBanks = [mootaOfficialAccount, ...initialBanks]
+
+        let initialKas = initial.kas || []
+        const hasKeluar = initialKas.some((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
+        if (!hasKeluar) {
+          const samplePengeluaran = (INITIAL_KAS || []).filter((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
+          initialKas = [...samplePengeluaran, ...initialKas]
+          await saveStorageItem(STORAGE_KEYS.KAS, initialKas)
+        }
+
+        // Normalisasi warga: pastikan Bambang Sutrisno (w-1) dan warga murni berstatus jabatan 'warga'
+        const sanitizedWarga = (initial.warga || []).map((w) => {
+          if (w.id === 'w-1' || (w.nama && w.nama.toLowerCase().includes('bambang sutrisno'))) {
+            return { ...w, jabatan: 'warga', role: 'warga', noRumah: '01', blok: 'A', rt_id: 'rt-01-01' }
+          }
+          return w
+        })
+
+        // Normalisasi users: u-w-1 sebagai warga biasa, u-rt-01-01 sebagai Bpk. Syahdan
+        const sanitizedUsers = (initial.users || []).map((u) => {
+          if (u.id === 'u-w-1' || u.username === 'bambang.sutrisno' || (u.name && u.name.toLowerCase().includes('bambang sutrisno'))) {
+            return {
+              ...u,
+              id: 'u-w-1',
+              username: 'bambang.sutrisno',
+              name: 'Bambang Sutrisno (Warga Blok A-01)',
+              role: 'warga',
+              jabatan: 'warga',
+              resident_id: 'w-1',
+              rt_id: 'rt-01-01',
+              rw_id: 'rw-01'
+            }
+          }
+          if (u.id === 'u-rt-01-01' || u.username === 'rt01.rw01' || u.username === 'rt') {
+            return {
+              ...u,
+              id: 'u-rt-01-01',
+              username: 'rt01.rw01',
+              name: 'Bpk. Syahdan (Ketua RT 01 / RW 01)',
+              role: 'rt',
+              jabatan: 'rt',
+              resident_id: null,
+              rt_id: 'rt-01-01',
+              rw_id: 'rw-01'
+            }
+          }
+          return u
+        })
+
+        await saveStorageItem(STORAGE_KEYS.WARGA, sanitizedWarga)
+        await saveStorageItem(STORAGE_KEYS.USERS, sanitizedUsers)
+
         setJenisIuran(initial.jenisIuran)
-        setWarga(initial.warga)
-        setTagihan(initial.tagihan)
-        setKas(initial.kas)
+        setWarga(sanitizedWarga)
+        setTagihan(sanitizedTagihan)
+        setKas(initialKas)
         setEvents(initial.events)
         setTagihanEvents(initial.tagihanEvents)
-        setUsers(initial.users)
+        setUsers(sanitizedUsers)
         setRts(initial.rts)
+        setRws(initial.rws || [])
         setPengaduan(initial.pengaduan)
         setSurat(initial.surat)
         setKontakDarurat(initial.kontakDarurat)
         setAdminAuth(initial.adminAuth)
-        setBankAccounts(initial.bankAccounts || [])
+        setBankAccounts(sanitizedBanks)
         setQrisAccounts(initial.qrisAccounts || [])
         setNotifications(initial.notifications || [])
         setAuditLogs(initial.auditLogs || [])
+        setJadwalSatpam(initial.jadwalSatpam || [])
+        setPetugasSatpam(initial.petugasSatpam || [])
 
-        // Cek saved user session
-        const savedUser = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER)
-        if (savedUser) {
-          setCurrentUser(JSON.parse(savedUser))
+        // Cek saved user session & migrasi otomatis sesi aktif
+        const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER)
+        if (savedUserStr) {
+          try {
+            let parsedUser = JSON.parse(savedUserStr)
+            // Jika user yang tersimpan adalah Bambang Sutrisno atau warga biasa, pulihkan ke role warga murni
+            if (
+              parsedUser?.role === 'warga' ||
+              parsedUser?.username === 'bambang.sutrisno' ||
+              parsedUser?.id === 'u-w-1' ||
+              parsedUser?.resident_id === 'w-1' ||
+              (parsedUser?.name && parsedUser.name.toLowerCase().includes('bambang sutrisno') && parsedUser.role !== 'admin')
+            ) {
+              parsedUser = {
+                ...parsedUser,
+                id: parsedUser?.id || 'u-w-1',
+                username: parsedUser?.username || 'bambang.sutrisno',
+                name: parsedUser?.name || 'Bambang Sutrisno (Warga Blok A-01)',
+                role: 'warga',
+                jabatan: 'warga',
+                resident_id: parsedUser?.resident_id || 'w-1',
+                rt_id: parsedUser?.rt_id || 'rt-01-01',
+                rw_id: parsedUser?.rw_id || 'rw-01'
+              }
+              await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(parsedUser))
+            } else if (parsedUser?.id === 'u-rt-01-01' || parsedUser?.username === 'rt01.rw01' || parsedUser?.username === 'rt') {
+              parsedUser = {
+                ...parsedUser,
+                name: 'Bpk. Syahdan (Ketua RT 01 / RW 01)',
+                role: 'rt',
+                jabatan: 'rt',
+                resident_id: null,
+                rt_id: 'rt-01-01',
+                rw_id: 'rw-01'
+              }
+              await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(parsedUser))
+            }
+            setCurrentUser(parsedUser)
+
+            // Registrasi & sinkronisasi token push notification untuk pengguna aktif
+            registerForPushNotificationsAsync().then((pushRes) => {
+              if (pushRes.success && pushRes.token) {
+                setExpoPushToken(pushRes.token)
+                setNotificationPermissionStatus(pushRes.permissionStatus)
+                syncPushTokenWithBackend(pushRes.token, parsedUser)
+              } else {
+                setNotificationPermissionStatus(pushRes.permissionStatus || 'denied')
+              }
+            }).catch(() => {})
+          } catch (e) {
+            console.warn('Gagal membaca savedUser:', e)
+          }
         }
+
+        // Baca cache token dan custom URL yang tersimpan
+        const savedPushToken = await AsyncStorage.getItem(STORAGE_KEY_PUSH_TOKEN)
+        if (savedPushToken) setExpoPushToken(savedPushToken)
+        const savedApiUrl = await getLaravelApiUrl()
+        if (savedApiUrl) setLaravelApiUrlState(savedApiUrl)
 
         // Background sync dari Supabase
         syncAllFromSupabase().then((res) => {
           if (res) {
             if (res.config) setConfig(res.config)
             if (res.jenisIuran?.length) setJenisIuran(res.jenisIuran)
-            if (res.warga?.length) setWarga(res.warga)
+            if (res.warga?.length) {
+              const sanitizedW = res.warga.map((w) => {
+                if (w.id === 'w-1' || (w.nama && w.nama.toLowerCase().includes('bambang sutrisno'))) {
+                  return { ...w, jabatan: 'warga' }
+                }
+                return w
+              })
+              setWarga(sanitizedW)
+            }
             if (res.tagihan?.length) setTagihan(res.tagihan)
             if (res.kas?.length) setKas(res.kas)
             if (res.events?.length) setEvents(res.events)
             if (res.tagihanEvents?.length) setTagihanEvents(res.tagihanEvents)
             if (res.users?.length) setUsers(res.users)
             if (res.rts?.length) setRts(res.rts)
+            if (res.rws?.length) setRws(res.rws)
             if (res.pengaduan?.length) setPengaduan(res.pengaduan)
             if (res.surat?.length) setSurat(res.surat)
             if (res.kontakDarurat?.length) setKontakDarurat(res.kontakDarurat)
@@ -158,45 +343,190 @@ export function AppProvider({ children }) {
   }
 
   // Auth Functions
-  const login = async (username, password) => {
-    const res = await apiLogin({ username, password, users, adminAuth, residents: warga })
+  const login = async (usernameOrObj, maybePassword) => {
+    let u = usernameOrObj
+    let p = maybePassword
+    if (typeof usernameOrObj === 'object' && usernameOrObj !== null) {
+      u = usernameOrObj.username
+      p = usernameOrObj.password
+    }
+    const res = await apiLogin({ username: u, password: p, users, adminAuth, residents: warga })
     if (res.success) {
       setCurrentUser(res.user)
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(res.user))
+
+      // Daftarkan Expo Push Token dan sinkronkan ke Laravel API
+      registerForPushNotificationsAsync().then((pushRes) => {
+        if (pushRes.success && pushRes.token) {
+          setExpoPushToken(pushRes.token)
+          setNotificationPermissionStatus(pushRes.permissionStatus)
+          syncPushTokenWithBackend(pushRes.token, res.user)
+        } else {
+          setNotificationPermissionStatus(pushRes.permissionStatus || 'denied')
+        }
+      }).catch(() => {})
     }
     return res
   }
 
   const logout = async () => {
+    if (currentUser) {
+      await removePushTokenFromBackend(currentUser)
+    }
     setCurrentUser(null)
     await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
   }
 
-  // Role info helpers
-  const isAdmin = currentUser?.role === 'admin'
-  const isRT = currentUser?.role === 'rt'
-  const isWarga = currentUser?.role === 'warga'
-  const isAdminLoggedIn = isAdmin || isRT
+  // Role & Jabatan info helpers
+  const rawRole = currentUser?.role || 'warga'
+  const isActuallyWarga = rawRole === 'warga'
+  const userJabatan = isActuallyWarga
+    ? 'warga'
+    : (currentUser?.jabatan || (rawRole !== 'admin' ? rawRole : 'admin'))
 
-  const currentRT = isRT ? rts.find((r) => r.id === currentUser.rt_id) || rts[0] : null
-  const currentWarga = isWarga ? warga.find((w) => w.id === currentUser.resident_id) || null : null
+  // isLeadershipUser: Akun resmi pimpinan wilayah (Ketua RT / Ketua RW) atau Admin IT adalah akun struktural kepengurusan murni
+  const isRTUser = !isActuallyWarga && (rawRole === 'rt' || userJabatan === 'rt')
+  const isRWUser = !isActuallyWarga && (rawRole === 'rw' || userJabatan === 'rw')
+  const isLeadershipUser = isRTUser || isRWUser || rawRole === 'admin'
+  const isOfficial = !isActuallyWarga && (['rt', 'rw', 'bendahara', 'pengurus'].includes(userJabatan) || ['rt', 'rw', 'bendahara', 'pengurus'].includes(rawRole))
+
+  // hasDualRole HANYA aktif untuk peran fungsional warga (Bendahara & Pengurus) yang merangkap iuran/fasum
+  // Akun Ketua RT & Ketua RW adalah akun tata kelola wilayah murni (tidak ada ubah role ke warga)
+  const hasDualRole = Boolean(currentUser && isOfficial && !isLeadershipUser)
+
+  // Mode View Switcher:
+  // Jika rawRole === 'warga', effectiveRole PASTI 'warga'!
+  // Jika pimpinan struktural (RT/RW/Admin), effectiveRole terkunci sesuai jabatannya
+  // Jika pengguna fungsional dual role (Bendahara/Pengurus), ikuti activeMode
+  const effectiveRole = isActuallyWarga
+    ? 'warga'
+    : (isLeadershipUser
+        ? (isRWUser ? 'rw' : (isRTUser ? 'rt' : rawRole))
+        : (hasDualRole
+            ? (activeMode === 'warga' ? 'warga' : userJabatan)
+            : rawRole))
+
+  const isWarga = effectiveRole === 'warga'
+  const isRT = effectiveRole === 'rt'
+  const isRW = effectiveRole === 'rw'
+  const isBendahara = effectiveRole === 'bendahara'
+  const isPengurus = effectiveRole === 'pengurus'
+  const isAdmin = effectiveRole === 'admin'
+  const isSuperAdmin = isAdmin && !currentUser?.rw_id
+  const isAdminLoggedIn = !isWarga && (isAdmin || isRW || isRT || isBendahara || isPengurus)
+
+  const toggleActiveMode = () => {
+    if (isLeadershipUser) return
+    setActiveMode((prev) => (prev === 'jabatan' ? 'warga' : 'jabatan'))
+  }
+
+  const jabatanLabel = getJabatanLabel(userJabatan)
+  const jabatanShortLabel = getJabatanShortLabel(userJabatan)
+  const jabatanTheme = getJabatanTheme(userJabatan)
+
+  // Current entity lookups: Warga maupun RT mendapatkan RT dan RW wilayahnya
+  const effectiveUser = currentUser ? { ...currentUser, role: effectiveRole } : null
+  const currentWarga = currentUser?.resident_id
+    ? warga.find((w) => w.id === currentUser.resident_id) || null
+    : warga.find((w) => (w.nama || '').toLowerCase() === (currentUser?.name || '').toLowerCase()) || (isWarga ? warga[0] : null)
+
+  const userRtId = currentUser?.rt_id || currentWarga?.rt_id || 'rt-01-01'
+  const currentRT = rts.find((r) => r.id === userRtId) || rts[0] || null
+  const userRwId = currentUser?.rw_id || currentWarga?.rw_id || currentRT?.rw_id || 'rw-01'
+  const currentRW = rws.find((r) => r.id === userRwId) || rws[0] || null
+  const scopedRts = currentUser?.rw_id ? rts.filter((r) => r.rw_id === currentUser.rw_id) : rts
 
   // Role-scoped data
-  const scopedWarga = filterResidentsByRole(warga, currentUser)
-  const scopedTagihan = filterBillsByRole(tagihan, warga, currentUser)
-  const scopedKas = filterKasByRole(kas, currentUser)
-  const scopedEvents = filterEventsByRole(events, currentUser)
-  const scopedKontakDarurat = filterKontakDaruratByRole(kontakDarurat, currentUser, currentWarga)
-  const scopedPengaduan = isRT
-    ? pengaduan.filter((p) => p.rt_id === currentUser.rt_id)
-    : isWarga
-    ? pengaduan.filter((p) => p.rt_id === (currentWarga?.rt_id || 'rt-1'))
-    : pengaduan
-  const scopedSurat = isRT
-    ? surat.filter((s) => s.rt_id === currentUser.rt_id)
-    : isWarga
-    ? surat.filter((s) => s.wargaId === currentUser.resident_id)
+  const scopedWarga = filterResidentsByRole(warga, effectiveUser, rts)
+  const scopedTagihan = filterBillsByRole(tagihan, warga, effectiveUser, rts)
+  const scopedKas = filterKasByRole(kas, effectiveUser)
+  const scopedEvents = filterEventsByRole(events, effectiveUser)
+  const scopedKontakDarurat = filterKontakDaruratByRole(kontakDarurat, effectiveUser, currentWarga)
+
+  // Scope Surat: Warga hanya surat miliknya, RT hanya tujuan RT/both di wilayahnya, RW hanya tujuan RW/both
+  const scopedSurat = isWarga
+    ? surat.filter((s) => s.wargaId === (currentWarga?.id || currentUser?.resident_id || currentUser?.id))
+    : isRT
+    ? surat.filter((s) => (s.rt_id === (currentRT?.id || currentUser?.rt_id)) && (s.tujuan === 'rt' || s.tujuan === 'both' || !s.tujuan))
+    : isRW
+    ? surat.filter((s) => (s.tujuan === 'rw' || s.tujuan === 'both'))
     : surat
+
+  // Scope Pengaduan: Warga melihat aduannya, RT tujuan RT/both di wilayahnya, RW tujuan RW/both
+  const scopedPengaduan = isWarga
+    ? pengaduan.filter((p) => p.wargaId === (currentWarga?.id || currentUser?.resident_id || currentUser?.id))
+    : isRT
+    ? pengaduan.filter((p) => (p.rt_id === (currentRT?.id || currentUser?.rt_id)) && (p.tujuan === 'rt' || p.tujuan === 'both' || !p.tujuan))
+    : isRW
+    ? pengaduan.filter((p) => (p.tujuan === 'rw' || p.tujuan === 'both'))
+    : pengaduan
+
+  // Dynamic Unread Badges Calculation (§1 & §5)
+  const isSuratUnread = (s) => {
+    if (!s) return false
+    if (isWarga) {
+      if (s.readStatus && typeof s.readStatus.warga === 'boolean') {
+        return s.readStatus.warga === false
+      }
+      return (s.balasan?.length > 0 || s.status === 'Selesai' || s.status === 'Diproses') && !s.readBy?.includes('warga')
+    }
+    if (isRT) {
+      if (s.tujuan === 'rw') return false
+      if (s.readStatus && typeof s.readStatus.rt === 'boolean') {
+        return s.readStatus.rt === false
+      }
+      return !s.readBy?.includes('rt')
+    }
+    if (isRW) {
+      if (s.tujuan === 'rt') return false
+      if (s.readStatus && typeof s.readStatus.rw === 'boolean') {
+        return s.readStatus.rw === false
+      }
+      return !s.readBy?.includes('rw')
+    }
+    if (isAdmin || isPengurus) {
+      if (s.readStatus && typeof s.readStatus.admin === 'boolean') {
+        return s.readStatus.admin === false
+      }
+      return !s.readBy?.includes('admin')
+    }
+    return false
+  }
+
+  const isPengaduanUnread = (p) => {
+    if (!p) return false
+    if (isWarga) {
+      if (p.readStatus && typeof p.readStatus.warga === 'boolean') {
+        return p.readStatus.warga === false
+      }
+      return Boolean(p.tanggapan || p.tanggapanList?.length > 0) && !p.readBy?.includes('warga')
+    }
+    if (isRT) {
+      if (p.tujuan === 'rw') return false
+      if (p.readStatus && typeof p.readStatus.rt === 'boolean') {
+        return p.readStatus.rt === false
+      }
+      return !p.readBy?.includes('rt')
+    }
+    if (isRW) {
+      if (p.tujuan === 'rt') return false
+      if (p.readStatus && typeof p.readStatus.rw === 'boolean') {
+        return p.readStatus.rw === false
+      }
+      return !p.readBy?.includes('rw')
+    }
+    if (isAdmin || isPengurus) {
+      if (p.readStatus && typeof p.readStatus.admin === 'boolean') {
+        return p.readStatus.admin === false
+      }
+      return !p.readBy?.includes('admin')
+    }
+    return false
+  }
+
+  const suratUnreadCount = (scopedSurat || []).filter(isSuratUnread).length
+  const aduanUnreadCount = (scopedPengaduan || []).filter(isPengaduanUnread).length
+  const totalLayananUnreadCount = suratUnreadCount + aduanUnreadCount
 
   // Tagihan Operations
   const generateTagihanMassal = async (bulan, tahun, targetRtId = null, scope = 'ALL', selectedPosIds = null) => {
@@ -204,13 +534,15 @@ export function AppProvider({ children }) {
     const t = Number(tahun)
 
     const isRtUser = currentUser?.role === 'rt'
-    const finalRtId = isRtUser ? (currentUser?.rt_id || 'rt-1') : targetRtId
+    const finalRtId = isRtUser ? (currentUser?.rt_id || 'rt-01-01') : targetRtId
     const finalScope = isRtUser ? 'RT' : scope
 
     const targetWargaList = warga.filter((w) => {
       if (w.aktif === false) return false
       // RT user strictly only bills their own RT
       if (isRtUser) return w.rt_id === finalRtId
+      // RW user with rw_id: strictly only bills warga in their RW
+      if (currentUser?.rw_id && w.rw_id && w.rw_id !== currentUser.rw_id) return false
       // RW user: if targetRtId specified (not null / not 'ALL'), only bill that RT
       if (finalRtId && finalRtId !== 'ALL') return w.rt_id === finalRtId
       return true
@@ -266,11 +598,19 @@ export function AppProvider({ children }) {
             Number(tag.tahun) === t &&
             (tag.payment_scope === sc || (!tag.payment_scope && sc === 'RT'))
         )
+        const alreadyInBatch = newInvoices.some(
+          (tag) =>
+            tag.wargaId === w.id &&
+            Number(tag.bulan) === b &&
+            Number(tag.tahun) === t &&
+            (tag.payment_scope === sc || (!tag.payment_scope && sc === 'RT'))
+        )
 
-        if (!exists) {
+        if (!exists && !alreadyInBatch) {
           const invId = `tag-${t}-${String(b).padStart(2, '0')}-${sc.toLowerCase()}-${w.id}`
-          const ownerId = sc === 'RW' ? (config?.rw || 'rw-15') : w.rt_id
-          const ownerLabel = sc === 'RW' ? (config?.rw || 'RW 15') : (rtObj.name || 'RT 01')
+          const rwClean = (rtObj?.rw && !rtObj.rw.includes('-')) ? rtObj.rw : (config?.rw && !config.rw.includes('-') ? config.rw : 'RW 01')
+          const ownerId = sc === 'RW' ? (w.rw_id || rtObj?.rw_id || 'rw-01') : w.rt_id
+          const ownerLabel = sc === 'RW' ? rwClean : (rtObj?.name || 'RT 01')
 
           newInvoices.push({
             id: invId,
@@ -459,7 +799,7 @@ export function AppProvider({ children }) {
       return t
     })
 
-    // Sinkronisasi Kas Otomatis
+    // Sinkronisasi Kas Otomatis (Idempotent: cegah pencatatan ganda ke buku kas)
     let updatedKas = kas
     if (isPaid) {
       const isRw = targetTagihan.payment_scope === 'RW'
@@ -476,7 +816,7 @@ export function AppProvider({ children }) {
         rt_id: isRw ? null : (targetWarga.rt_id || currentUser?.rt_id || 'rt-1'),
         pj: currentUser?.name || (isRw ? 'Bendahara RW' : 'Bendahara RT')
       }
-      updatedKas = [newKasEntry, ...kas]
+      updatedKas = [newKasEntry, ...kas.filter((k) => k.tagihanId !== tagihanId)]
       setKas(updatedKas)
       await saveStorageItem(STORAGE_KEYS.KAS, updatedKas)
     } else {
@@ -524,6 +864,81 @@ export function AppProvider({ children }) {
     }
 
     return { success: true }
+  }
+
+  const bayarTagihanOtomatisMoota = async (tagihanId, mutationData = null) => {
+    const targetTagihan = tagihan.find((t) => t.id === tagihanId)
+    if (!targetTagihan) return { success: false, message: 'Tagihan tidak ditemukan' }
+
+    const targetWarga = warga.find((w) => w.id === targetTagihan.wargaId) || {}
+    const exactNominal = calculateTotalWithKodeUnik(targetTagihan.total, targetWarga)
+    const today = new Date().toISOString().slice(0, 10)
+    const randomSeq = Math.floor(100000 + Math.random() * 900000)
+    const noKwitansi = `MOOTA-${today.replace(/-/g, '')}-${randomSeq}`
+    const verifiedTimestamp = new Date().toISOString()
+    const isRw = targetTagihan.payment_scope === 'RW'
+
+    const updated = tagihan.map((t) => {
+      if (t.id === tagihanId) {
+        return {
+          ...t,
+          status: 'Lunas',
+          verifikator: 'Moota Auto-Verify (Sandbox)',
+          verified_by: 'Moota Auto-Verify (Sandbox)',
+          tglVerifikasi: verifiedTimestamp,
+          verified_at: verifiedTimestamp,
+          tanggalBayar: today,
+          tglBayar: today,
+          metodeBayar: 'Transfer Bank (Moota Auto)',
+          metode: 'Transfer Bank (Moota Auto)',
+          noKwitansi: noKwitansi,
+          total_dibayar: exactNominal,
+          moota_mutation_id: mutationData?.mutation_id || mutationData?.id || null,
+          moota_bank_id: mutationData?.bank_id || 'Lagzqp0Pk42',
+          keteranganBayar: mutationData?.description || 'Transfer terverifikasi otomatis oleh Moota Sandbox'
+        }
+      }
+      return t
+    })
+
+    // Tambah kas otomatis
+    const newKasEntry = {
+      id: `kas-moota-${Date.now()}`,
+      tanggal: today,
+      tipe: 'Masuk',
+      kategori: isRw ? 'Iuran RW' : 'Iuran RT',
+      deskripsi: `${targetTagihan.pembayaran_kepada || 'IPL'} - ${targetWarga.nama || 'Warga'} (${targetWarga.blok || '-'}/${targetWarga.noRumah || '-'}) bln ${targetTagihan.bulan}/${targetTagihan.tahun}`,
+      keterangan: `Kwitansi: ${noKwitansi} (Moota Auto Sandbox)`,
+      nominal: targetTagihan.total,
+      tagihanId: tagihanId,
+      scope: isRw ? 'rw' : 'rt',
+      rt_id: isRw ? null : (targetWarga.rt_id || currentUser?.rt_id || 'rt-1'),
+      pj: 'Sistem Moota Sandbox'
+    }
+    const updatedKas = [newKasEntry, ...kas.filter((k) => k.tagihanId !== tagihanId)]
+    setKas(updatedKas)
+    await saveStorageItem(STORAGE_KEYS.KAS, updatedKas)
+
+    setTagihan(updated)
+    await saveStorageItem(STORAGE_KEYS.TAGIHAN, updated)
+
+    await addNotification({
+      userId: currentUser?.id || `u-${targetTagihan.wargaId}`,
+      residentId: targetTagihan.wargaId,
+      title: 'Pembayaran IPL Terverifikasi Otomatis ⚡',
+      message: `Pembayaran ${targetTagihan.pembayaran_kepada || 'IPL'} sebesar Rp ${exactNominal.toLocaleString('id-ID')} telah BERHASIL diverifikasi secara otomatis oleh sistem Moota! No Kwitansi: ${noKwitansi}.`,
+      type: 'payment_verified',
+      tagihanId: tagihanId
+    })
+
+    await addAuditLog({
+      action: 'MOOTA_AUTO_VERIFY_SUCCESS',
+      entity: 'tagihan',
+      entityId: tagihanId,
+      details: `Pembayaran ${targetTagihan.pembayaran_kepada} warga ${targetWarga.nama} terverifikasi otomatis via Moota Sandbox (Rp ${exactNominal.toLocaleString('id-ID')})`
+    })
+
+    return { success: true, message: 'Pembayaran berhasil diverifikasi secara otomatis oleh Moota!', noKwitansi }
   }
 
   // Warga Operations
@@ -663,6 +1078,60 @@ export function AppProvider({ children }) {
     )
     setWarga(updated)
     await saveStorageItem(STORAGE_KEYS.WARGA, updated)
+
+    // Jika jabatan atau role diubah, sinkronkan ke akun user
+    if (updatedFields.jabatan !== undefined || updatedFields.role !== undefined) {
+      const targetW = warga.find((w) => w.id === wargaId)
+      const targetJabatan = updatedFields.jabatan !== undefined ? updatedFields.jabatan : updatedFields.role
+      const isOfficial = ['rt', 'rw', 'bendahara', 'pengurus', 'admin'].includes(targetJabatan)
+      const targetRole = updatedFields.role !== undefined ? updatedFields.role : (isOfficial ? targetJabatan : 'warga')
+
+      let accountFound = false
+      const updatedUsers = users.map((u) => {
+        if (u.resident_id === wargaId || (targetW && u.username && u.username.toLowerCase() === `warga.${(targetW.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`)) {
+          accountFound = true
+          return {
+            ...u,
+            resident_id: wargaId,
+            jabatan: targetJabatan,
+            role: targetRole
+          }
+        }
+        return u
+      })
+
+      // Jika belum memiliki akun login, buatkan otomatis
+      if (!accountFound && targetW && isOfficial) {
+        const cleanName = (targetW.nama || 'warga').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const newAcc = {
+          id: `u-${wargaId}`,
+          username: `${targetJabatan}.${cleanName}`.slice(0, 24),
+          password: '123456',
+          name: targetW.nama,
+          role: targetRole,
+          jabatan: targetJabatan,
+          resident_id: wargaId,
+          rt_id: targetW.rt_id || 'rt-1',
+          rw_id: targetW.rw_id || 'rw-01'
+        }
+        updatedUsers.push(newAcc)
+      }
+
+      setUsers(updatedUsers)
+      await saveStorageItem(STORAGE_KEYS.USERS, updatedUsers)
+
+      // Sinkronkan currentUser jika pengguna yang sedang login yang diubah
+      if (currentUser?.resident_id === wargaId || currentUser?.id === `u-${wargaId}`) {
+        const updatedCurrent = {
+          ...currentUser,
+          jabatan: targetJabatan,
+          role: targetRole
+        }
+        setCurrentUser(updatedCurrent)
+        await saveStorageItem(STORAGE_KEYS.CURRENT_USER, updatedCurrent)
+      }
+    }
+
     return { success: true }
   }
 
@@ -675,13 +1144,14 @@ export function AppProvider({ children }) {
       id: newId,
       tanggal: kasData.tanggal || new Date().toISOString().slice(0, 10),
       tipe: isMasuk ? 'Masuk' : 'Keluar',
-      kategori: kasData.kategori || 'Iuran Warga',
+      kategori: kasData.kategori || (isMasuk ? 'Iuran Warga' : 'Operasional'),
       nominal: Number(kasData.nominal) || 0,
       deskripsi: desc,
       keterangan: desc,
-      scope: currentUser?.role === 'admin' ? 'rw' : 'rt',
-      rt_id: currentUser?.role === 'admin' ? null : currentUser?.rt_id || 'rt-1',
-      pj: currentUser?.name || 'Bendahara'
+      scope: kasData.scope || (currentUser?.role === 'admin' ? 'rw' : 'rt'),
+      rt_id: kasData.rt_id !== undefined ? kasData.rt_id : (currentUser?.role === 'admin' ? null : currentUser?.rt_id || 'rt-01-01'),
+      rw_id: kasData.rw_id || currentUser?.rw_id || 'rw-01',
+      pj: kasData.pj || currentUser?.name || (currentUser?.role === 'rt' ? 'Ketua RT' : 'Pengurus RW')
     }
     const updated = [item, ...kas]
     setKas(updated)
@@ -984,38 +1454,180 @@ export function AppProvider({ children }) {
 
   const buatPengaduan = async (data) => {
     const newId = `aduan-${Date.now()}`
+    const wId = currentWarga?.id || currentUser?.resident_id || currentUser?.id || 'w-anon'
+    const rtId = currentWarga?.rt_id || currentUser?.rt_id || 'rt-01-01'
+    const rwId = currentWarga?.rw_id || currentUser?.rw_id || 'rw-01'
+    const targetTujuan = data.tujuan || 'rt' // 'rt' | 'rw' | 'both'
+
     const item = {
       id: newId,
-      wargaId: currentUser?.resident_id || 'w-anon',
-      namaWarga: currentUser?.name || 'Warga',
-      rt_id: currentUser?.rt_id || 'rt-1',
+      wargaId: wId,
+      namaWarga: data.hideName ? 'Warga Lingkungan' : (currentWarga?.nama || currentUser?.name || 'Warga'),
+      rt_id: rtId,
+      rw_id: rwId,
+      tujuan: targetTujuan,
       kategori: data.kategori || 'Fasilitas Umum',
+      lokasi: data.lokasi || '',
       judul: data.judul,
       deskripsi: data.deskripsi,
+      photos: data.photos || [],
+      ticketNum: data.ticketNum || `AD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
       status: 'Menunggu Tindak Lanjut',
-      tanggal: new Date().toISOString().slice(0, 10)
+      stage: 1,
+      tanggal: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+      readStatus: {
+        warga: true,
+        rt: targetTujuan === 'rw' ? true : false,
+        rw: targetTujuan === 'rt' ? true : false
+      },
+      readBy: ['warga'],
+      tanggapan: '',
+      tanggapanList: []
     }
+
     const updated = [item, ...pengaduan]
     setPengaduan(updated)
     await saveStorageItem(STORAGE_KEYS.PENGADUAN, updated)
+
+    // Notifikasi sistem
+    if (targetTujuan === 'rt' || targetTujuan === 'both') {
+      await addNotification({
+        title: 'Aduan Warga Baru ⚠️',
+        message: `Laporan [${item.kategori}]: ${item.judul}`,
+        type: 'warning',
+        aduanId: newId,
+        targetRole: 'rt',
+        targetRtId: rtId
+      })
+    }
+    if (targetTujuan === 'rw' || targetTujuan === 'both') {
+      await addNotification({
+        title: 'Aduan Lingkungan (RW) ⚠️',
+        message: `Laporan [${item.kategori}] ditujukan ke RW: ${item.judul}`,
+        type: 'warning',
+        aduanId: newId,
+        targetRole: 'rw'
+      })
+    }
+
     return { success: true, pengaduan: item }
   }
 
-  const updatePengaduan = async (id, status, tanggapan) => {
+  const bacaPengaduan = async (id) => {
+    let changed = false
     const updated = pengaduan.map((p) => {
       if (p.id === id) {
-        return {
-          ...p,
-          status,
-          tanggapan: tanggapan || p.tanggapan,
-          tglSelesai: status === 'Selesai' ? new Date().toISOString().slice(0, 10) : p.tglSelesai
+        const curReadStatus = p.readStatus || { warga: false, rt: false, rw: false }
+        const curReadBy = Array.isArray(p.readBy) ? [...p.readBy] : []
+        let nextReadStatus = { ...curReadStatus }
+
+        if (isWarga) {
+          if (!nextReadStatus.warga) {
+            nextReadStatus.warga = true
+            if (!curReadBy.includes('warga')) curReadBy.push('warga')
+            changed = true
+          }
+        } else if (isRT) {
+          if (!nextReadStatus.rt) {
+            nextReadStatus.rt = true
+            if (!curReadBy.includes('rt')) curReadBy.push('rt')
+            changed = true
+          }
+        } else if (isRW) {
+          if (!nextReadStatus.rw) {
+            nextReadStatus.rw = true
+            if (!curReadBy.includes('rw')) curReadBy.push('rw')
+            changed = true
+          }
+        } else if (isAdmin || isPengurus) {
+          if (!nextReadStatus.admin) {
+            nextReadStatus.admin = true
+            if (!curReadBy.includes('admin')) curReadBy.push('admin')
+            changed = true
+          }
+        }
+
+        if (changed) {
+          return {
+            ...p,
+            readStatus: nextReadStatus,
+            readBy: curReadBy
+          }
         }
       }
       return p
     })
+
+    if (changed) {
+      setPengaduan(updated)
+      await saveStorageItem(STORAGE_KEYS.PENGADUAN, updated)
+    }
+    return { success: true }
+  }
+
+  const tanggapiPengaduan = async (id, { tanggapan, newStatus }) => {
+    const targetAduan = pengaduan.find((p) => p.id === id)
+    if (!targetAduan) return { success: false, message: 'Aduan tidak ditemukan' }
+
+    const responderRole = isRT ? 'rt' : isRW ? 'rw' : (isAdmin || isPengurus) ? 'pengurus' : 'petugas'
+    const responderName = currentUser?.name || (isRT ? 'Ketua RT' : isRW ? 'Ketua RW' : 'Petugas Lingkungan')
+    const nextStatus = newStatus || targetAduan.status
+    const nextStage = nextStatus === 'Selesai' ? 4 : (nextStatus === 'Sedang Diproses' ? 3 : 2)
+
+    const newTgpItem = {
+      id: `tgp-${Date.now()}`,
+      responderRole,
+      responderName,
+      pesan: (tanggapan || '').trim(),
+      statusAfter: nextStatus,
+      created_at: new Date().toISOString()
+    }
+
+    const updated = pengaduan.map((p) => {
+      if (p.id === id) {
+        const curReadBy = [responderRole]
+        let nextReadStatus = {
+          ...(p.readStatus || {}),
+          warga: false, // Warga menerima notifikasi & badge belum dibaca
+          [responderRole]: true
+        }
+
+        return {
+          ...p,
+          status: nextStatus,
+          stage: nextStage,
+          tanggapan: tanggapan?.trim() || p.tanggapan,
+          tanggapanList: [...(p.tanggapanList || []), newTgpItem],
+          tglSelesai: nextStatus === 'Selesai' ? new Date().toISOString().slice(0, 10) : p.tglSelesai,
+          readStatus: nextReadStatus,
+          readBy: curReadBy,
+          updated_at: new Date().toISOString()
+        }
+      }
+      return p
+    })
+
     setPengaduan(updated)
     await saveStorageItem(STORAGE_KEYS.PENGADUAN, updated)
+
+    // Kirim notifikasi ke warga pembuat aduan
+    if (targetAduan.wargaId) {
+      await addNotification({
+        userId: targetAduan.wargaId,
+        residentId: targetAduan.wargaId,
+        title: `Tanggapan Aduan: ${targetAduan.kategori} 🔔`,
+        message: `${responderName}: "${tanggapan.trim()}" (Status: ${nextStatus})`,
+        type: 'info',
+        aduanId: id
+      })
+    }
+
     return { success: true }
+  }
+
+  const updatePengaduan = async (id, status, tanggapan) => {
+    return tanggapiPengaduan(id, { tanggapan: tanggapan || 'Status diperbarui', newStatus: status })
   }
 
   // Event Operations
@@ -1177,33 +1789,338 @@ export function AppProvider({ children }) {
 
   const ajukanSurat = async (data) => {
     const newId = `surat-${Date.now()}`
+    const wId = currentWarga?.id || currentUser?.resident_id || currentUser?.id || 'w-anon'
+    const rtId = currentWarga?.rt_id || currentUser?.rt_id || 'rt-01-01'
+    const rwId = currentWarga?.rw_id || currentUser?.rw_id || 'rw-01'
+    const targetTujuan = data.tujuan || 'rt' // 'rt' | 'rw' | 'both'
+
     const item = {
       id: newId,
-      wargaId: currentUser?.resident_id || 'w-anon',
-      namaWarga: currentUser?.name || 'Warga',
-      rt_id: currentUser?.rt_id || 'rt-1',
+      wargaId: wId,
+      namaWarga: currentWarga?.nama || currentUser?.name || 'Warga',
+      blok: currentWarga?.blok || '',
+      noRumah: currentWarga?.noRumah || '',
+      rt_id: rtId,
+      rw_id: rwId,
+      tujuan: targetTujuan,
       jenisSurat: data.jenisSurat || 'Surat Keterangan Domisili',
-      keperluan: data.keperluan,
+      keperluan: data.keperluan || '',
+      isiSurat: data.isiSurat || '',
+      lampiran: data.lampiran || null,
       status: 'Diajukan',
-      tanggal: new Date().toISOString().slice(0, 10)
+      tanggal: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+      readStatus: {
+        warga: true,
+        rt: targetTujuan === 'rw' ? true : false,
+        rw: targetTujuan === 'rt' ? true : false
+      },
+      readBy: ['warga'],
+      balasan: []
     }
+
     const updated = [item, ...surat]
     setSurat(updated)
     await saveStorageItem(STORAGE_KEYS.SURAT, updated)
+
+    // Notifikasi untuk tujuan (RT dan/atau RW)
+    if (targetTujuan === 'rt' || targetTujuan === 'both') {
+      await addNotification({
+        title: 'Permohonan Surat Baru 📄',
+        message: `${item.namaWarga} (Blok ${item.blok}/${item.noRumah}) mengajukan ${item.jenisSurat}.`,
+        type: 'info',
+        suratId: newId,
+        targetRole: 'rt',
+        targetRtId: rtId
+      })
+    }
+    if (targetTujuan === 'rw' || targetTujuan === 'both') {
+      await addNotification({
+        title: 'Permohonan Surat Tingkat RW 📄',
+        message: `${item.namaWarga} (RT ${rtId}) mengajukan ${item.jenisSurat} untuk Ketua RW.`,
+        type: 'info',
+        suratId: newId,
+        targetRole: 'rw'
+      })
+    }
+
     return { success: true, surat: item }
   }
 
-  const updateSurat = async (id, status) => {
-    const updated = surat.map((s) => (s.id === id ? { ...s, status } : s))
+  const bacaSurat = async (id) => {
+    let changed = false
+    const updated = surat.map((s) => {
+      if (s.id === id) {
+        const curReadStatus = s.readStatus || { warga: false, rt: false, rw: false }
+        const curReadBy = Array.isArray(s.readBy) ? [...s.readBy] : []
+        let nextReadStatus = { ...curReadStatus }
+
+        if (isWarga) {
+          if (!nextReadStatus.warga) {
+            nextReadStatus.warga = true
+            if (!curReadBy.includes('warga')) curReadBy.push('warga')
+            changed = true
+          }
+        } else if (isRT) {
+          if (!nextReadStatus.rt) {
+            nextReadStatus.rt = true
+            if (!curReadBy.includes('rt')) curReadBy.push('rt')
+            changed = true
+          }
+        } else if (isRW) {
+          if (!nextReadStatus.rw) {
+            nextReadStatus.rw = true
+            if (!curReadBy.includes('rw')) curReadBy.push('rw')
+            changed = true
+          }
+        } else if (isAdmin || isPengurus) {
+          if (!nextReadStatus.admin) {
+            nextReadStatus.admin = true
+            if (!curReadBy.includes('admin')) curReadBy.push('admin')
+            changed = true
+          }
+        }
+
+        if (changed) {
+          return {
+            ...s,
+            readStatus: nextReadStatus,
+            readBy: curReadBy
+          }
+        }
+      }
+      return s
+    })
+
+    if (changed) {
+      setSurat(updated)
+      await saveStorageItem(STORAGE_KEYS.SURAT, updated)
+    }
+    return { success: true }
+  }
+
+  const balasSurat = async (id, { pesan, newStatus }) => {
+    const targetSurat = surat.find((s) => s.id === id)
+    if (!targetSurat) return { success: false, message: 'Surat tidak ditemukan' }
+
+    const senderRole = isRT ? 'rt' : isRW ? 'rw' : (isAdmin || isPengurus) ? 'pengurus' : 'warga'
+    const senderName = currentUser?.name || (isRT ? 'Ketua RT' : isRW ? 'Ketua RW' : 'Warga')
+    const nextStatus = newStatus || targetSurat.status
+
+    const newReply = {
+      id: `reply-${Date.now()}`,
+      senderRole,
+      senderName,
+      pesan: (pesan || '').trim(),
+      statusAfter: nextStatus,
+      created_at: new Date().toISOString()
+    }
+
+    const updated = surat.map((s) => {
+      if (s.id === id) {
+        const curReadBy = []
+        let nextReadStatus = { ...(s.readStatus || {}) }
+
+        if (senderRole === 'warga') {
+          nextReadStatus.warga = true
+          curReadBy.push('warga')
+          if (s.tujuan === 'rt' || s.tujuan === 'both') nextReadStatus.rt = false
+          if (s.tujuan === 'rw' || s.tujuan === 'both') nextReadStatus.rw = false
+        } else {
+          // Official membalas -> Warga menerima notifikasi & badge belum dibaca
+          nextReadStatus.warga = false
+          if (senderRole === 'rt') {
+            nextReadStatus.rt = true
+            curReadBy.push('rt')
+          } else if (senderRole === 'rw') {
+            nextReadStatus.rw = true
+            curReadBy.push('rw')
+          }
+        }
+
+        return {
+          ...s,
+          status: nextStatus,
+          balasan: [...(s.balasan || []), newReply],
+          readStatus: nextReadStatus,
+          readBy: curReadBy,
+          updated_at: new Date().toISOString()
+        }
+      }
+      return s
+    })
+
     setSurat(updated)
     await saveStorageItem(STORAGE_KEYS.SURAT, updated)
+
+    // Kirim notifikasi balasan ke warga
+    if (senderRole !== 'warga' && targetSurat.wargaId) {
+      await addNotification({
+        userId: targetSurat.wargaId,
+        residentId: targetSurat.wargaId,
+        title: `Balasan Surat: ${targetSurat.jenisSurat} 📬`,
+        message: `${senderName}: "${pesan.trim()}" (Status: ${nextStatus})`,
+        type: 'info',
+        suratId: id
+      })
+    }
+
     return { success: true }
+  }
+
+  const updateSurat = async (id, status, catatan) => {
+    return balasSurat(id, { pesan: catatan || `Status surat diubah menjadi ${status}`, newStatus: status })
   }
 
   const updateConfig = async (newConfig) => {
     setConfig(newConfig)
     await saveStorageItem(STORAGE_KEYS.CONFIG, newConfig)
     return { success: true }
+  }
+
+  const updateAutoBillingConfig = async (newAutoBillingSettings) => {
+    const defaultAuto = {
+      enabled: true,
+      publishDay: 5,
+      dueDay: 20,
+      scope: 'ALL',
+      last_run_at: null,
+      last_run_period: null,
+      last_run_status: 'standby',
+      last_run_created_count: 0,
+      last_run_skipped_count: 0,
+      last_run_message: 'Sistem otomatisasi aktif menunggu jadwal tanggal terbit.',
+      scheduler_heartbeat: new Date().toISOString(),
+      scheduler_status: 'RUNNING'
+    }
+
+    const updatedAutoBilling = {
+      ...defaultAuto,
+      ...(config?.autoBilling || {}),
+      ...newAutoBillingSettings
+    }
+
+    const updatedConfig = {
+      ...config,
+      autoBilling: updatedAutoBilling
+    }
+
+    setConfig(updatedConfig)
+    await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
+
+    // Sync to Supabase wargaku_config
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('wargaku_config').upsert({
+          id: 'config-main',
+          data: updatedConfig,
+          updated_at: new Date().toISOString()
+        })
+      } catch (err) {
+        console.warn('Gagal sync autoBilling ke Supabase:', err)
+      }
+    }
+
+    await addAuditLog({
+      action: 'UPDATE_AUTO_BILLING_CONFIG',
+      entity: 'config',
+      entityId: 'autoBilling',
+      details: `Mengubah jadwal otomatis: Terbit tgl ${updatedAutoBilling.publishDay}, Jatuh Tempo tgl ${updatedAutoBilling.dueDay}, Status: ${updatedAutoBilling.enabled ? 'Aktif' : 'Nonaktif'}`
+    })
+
+    return { success: true, autoBilling: updatedAutoBilling }
+  }
+
+  const triggerManualBillingCatchUp = async (forceMonth = null, forceYear = null) => {
+    const nowJkt = getJakartaDate()
+    const targetY = forceYear || nowJkt.year
+    const targetM = forceMonth || nowJkt.month
+
+    const autoCfg = config?.autoBilling || {
+      enabled: true,
+      publishDay: 5,
+      dueDay: 20,
+      scope: 'ALL'
+    }
+
+    const result = buildAutoBillingInvoices({
+      targetYear: targetY,
+      targetMonth: targetM,
+      dueDay: autoCfg.dueDay || 20,
+      scope: autoCfg.scope || 'ALL',
+      residents: warga,
+      iuranRates: jenisIuran,
+      existingInvoices: tagihan,
+      rts
+    })
+
+    if (result.createdInvoices.length > 0) {
+      const updatedTagihan = [...result.createdInvoices, ...tagihan]
+      setTagihan(updatedTagihan)
+      await saveStorageItem(STORAGE_KEYS.TAGIHAN, updatedTagihan)
+
+      if (result.createdNotifications.length > 0) {
+        const updatedNotifs = [...result.createdNotifications, ...notifications]
+        setNotifications(updatedNotifs)
+        await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updatedNotifs)
+      }
+
+      // Sync ke Supabase wargaku_tagihan & wargaku_notifications
+      if (isSupabaseConfigured) {
+        try {
+          const dbInvoices = result.createdInvoices.map((inv) => ({
+            id: inv.id,
+            data: inv,
+            updated_at: new Date().toISOString()
+          }))
+          await supabase.from('wargaku_tagihan').upsert(dbInvoices, { onConflict: 'id' })
+
+          if (result.createdNotifications.length > 0) {
+            const dbNotifs = result.createdNotifications.map((n) => ({
+              id: n.id,
+              data: n,
+              updated_at: new Date().toISOString()
+            }))
+            await supabase.from('wargaku_notifications').upsert(dbNotifs, { onConflict: 'id' })
+          }
+        } catch (e) {
+          console.warn('Gagal sync tagihan otomatis ke Supabase:', e)
+        }
+      }
+    }
+
+    // Update monitoring status
+    const updatedAutoBilling = {
+      ...autoCfg,
+      last_run_at: new Date().toISOString(),
+      last_run_period: result.period,
+      last_run_status: 'success',
+      last_run_created_count: result.totalCreated,
+      last_run_skipped_count: Math.max(0, warga.length * (autoCfg.scope === 'ALL' ? 2 : 1) - result.totalCreated),
+      last_run_message: result.totalCreated > 0
+        ? `Berhasil menerbitkan ${result.totalCreated} tagihan IPL periode ${result.periodLabel}.`
+        : `Semua tagihan untuk periode ${result.periodLabel} sudah ada (0 duplikasi dibuat).`,
+      scheduler_heartbeat: new Date().toISOString(),
+      scheduler_status: 'RUNNING'
+    }
+
+    const updatedConfig = { ...config, autoBilling: updatedAutoBilling }
+    setConfig(updatedConfig)
+    await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
+
+    await addAuditLog({
+      action: 'TRIGGER_AUTO_BILLING_MANUAL',
+      entity: 'tagihan',
+      entityId: `auto-${result.period}`,
+      details: updatedAutoBilling.last_run_message
+    })
+
+    return {
+      success: true,
+      createdCount: result.totalCreated,
+      period: result.periodLabel,
+      message: updatedAutoBilling.last_run_message
+    }
   }
 
   const updateRtData = async (rtId, data) => {
@@ -1417,6 +2334,70 @@ export function AppProvider({ children }) {
     return { success: true }
   }
 
+  // Jadwal & Petugas Satpam CRUD
+  const tambahJadwalShift = async (data) => {
+    const newId = `jdw-${Date.now()}`
+    const newItem = {
+      id: newId,
+      hari: data.hari || 'Senin',
+      shift: data.shift || 'Pagi',
+      jam: data.jam || '07:00 - 15:00',
+      petugasIds: data.petugasIds || [],
+      lokasi: data.lokasi || 'Pos Utama Gerbang Depan',
+      catatan: data.catatan || ''
+    }
+    const updated = [newItem, ...jadwalSatpam]
+    setJadwalSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.JADWAL_SATPAM, updated)
+    return { success: true, jadwal: newItem }
+  }
+
+  const updateJadwalShift = async (id, data) => {
+    const updated = jadwalSatpam.map((j) => (j.id === id ? { ...j, ...data } : j))
+    setJadwalSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.JADWAL_SATPAM, updated)
+    return { success: true }
+  }
+
+  const hapusJadwalShift = async (id) => {
+    const updated = jadwalSatpam.filter((j) => j.id !== id)
+    setJadwalSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.JADWAL_SATPAM, updated)
+    return { success: true }
+  }
+
+  const tambahPetugasSatpam = async (data) => {
+    const newId = `sec-${Date.now()}`
+    const newItem = {
+      id: newId,
+      nama: data.nama || 'Petugas Satpam',
+      jabatan: data.jabatan || 'Anggota Pengamanan',
+      telepon: data.telepon || '',
+      wa: data.wa || data.telepon || '',
+      foto: data.foto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      status: data.status || 'Aktif',
+      posUtama: data.posUtama || 'Pos Utama Gerbang Depan'
+    }
+    const updated = [newItem, ...petugasSatpam]
+    setPetugasSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.PETUGAS_SATPAM, updated)
+    return { success: true, petugas: newItem }
+  }
+
+  const updatePetugasSatpam = async (id, data) => {
+    const updated = petugasSatpam.map((p) => (p.id === id ? { ...p, ...data } : p))
+    setPetugasSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.PETUGAS_SATPAM, updated)
+    return { success: true }
+  }
+
+  const hapusPetugasSatpam = async (id) => {
+    const updated = petugasSatpam.filter((p) => p.id !== id)
+    setPetugasSatpam(updated)
+    await saveStorageItem(STORAGE_KEYS.PETUGAS_SATPAM, updated)
+    return { success: true }
+  }
+
   // Bank Accounts CRUD
   const addBankAccount = async (data) => {
     const newId = `ba-${Date.now()}`
@@ -1520,14 +2501,14 @@ export function AppProvider({ children }) {
     }
     const updated = [newItem, ...notifications]
     setNotifications(updated)
-    await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
+    saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
     return { success: true, notification: newItem }
   }
 
   const markNotificationRead = async (id) => {
     const updated = notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
     setNotifications(updated)
-    await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
+    saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
     return { success: true }
   }
 
@@ -1546,7 +2527,7 @@ export function AppProvider({ children }) {
     }
     const updated = [newLog, ...auditLogs]
     setAuditLogs(updated)
-    await saveStorageItem(STORAGE_KEYS.AUDIT_LOGS, updated)
+    saveStorageItem(STORAGE_KEYS.AUDIT_LOGS, updated)
     return { success: true, log: newLog }
   }
 
@@ -1582,15 +2563,32 @@ export function AppProvider({ children }) {
         currentUser,
         login,
         logout,
+        activeMode,
+        setActiveMode,
+        toggleActiveMode,
+        hasDualRole,
+        effectiveRole,
+        currentRole: effectiveRole,
+        userJabatan,
+        jabatanLabel,
+        jabatanShortLabel,
+        jabatanTheme,
         isAdmin,
         isRT,
+        isRW,
+        isBendahara,
+        isPengurus,
+        isSuperAdmin,
         isWarga,
         isAdminLoggedIn,
         currentRT,
+        currentRW,
+        scopedRts,
         currentWarga,
         config,
         updateConfig,
         rts,
+        rws,
         addRtData,
         updateRtData,
         deleteRtData,
@@ -1622,6 +2620,14 @@ export function AppProvider({ children }) {
         tambahKontakDarurat,
         updateKontakDarurat,
         hapusKontakDarurat,
+        jadwalSatpam,
+        petugasSatpam,
+        tambahJadwalShift,
+        updateJadwalShift,
+        hapusJadwalShift,
+        tambahPetugasSatpam,
+        updatePetugasSatpam,
+        hapusPetugasSatpam,
         bankAccounts,
         addBankAccount,
         updateBankAccount,
@@ -1643,6 +2649,7 @@ export function AppProvider({ children }) {
         deleteTagihan,
         deleteTagihanBulk,
         bayarTagihan,
+        bayarTagihanOtomatisMoota,
         verifikasiTagihan,
         tambahWarga,
         verifikasiWargaBaru,
@@ -1652,15 +2659,107 @@ export function AppProvider({ children }) {
         tambahKas,
         deleteKas,
         buatPengaduan,
+        bacaPengaduan,
+        tanggapiPengaduan,
         updatePengaduan,
         ajukanSurat,
+        bacaSurat,
+        balasSurat,
         updateSurat,
+        isSuratUnread,
+        isPengaduanUnread,
+        suratUnreadCount,
+        aduanUnreadCount,
+        totalLayananUnreadCount,
         tambahEvent,
         hapusEvent,
         generateTagihanEventMassal,
         bayarTagihanEvent,
         tolakTagihanEvent,
-        deleteTagihanEvent
+        deleteTagihanEvent,
+        updateAutoBillingConfig,
+        triggerManualBillingCatchUp,
+        calculateNextRunDate,
+        // Push Notification & Laravel API Integration
+        expoPushToken,
+        laravelApiUrl,
+        setLaravelApiUrl: async (newUrl) => {
+          await saveLaravelApiUrl(newUrl)
+          setLaravelApiUrlState(newUrl || 'http://10.0.2.2:8000')
+          if (expoPushToken && currentUser) {
+            await syncPushTokenWithBackend(expoPushToken, currentUser)
+          }
+          return { success: true }
+        },
+        notificationPermissionStatus,
+        refreshPushToken: async () => {
+          const reg = await registerForPushNotificationsAsync()
+          if (reg.success && reg.token) {
+            setExpoPushToken(reg.token)
+            setNotificationPermissionStatus(reg.permissionStatus)
+            if (currentUser) {
+              await syncPushTokenWithBackend(reg.token, currentUser)
+            }
+            return { success: true, token: reg.token }
+          }
+          return { success: false, reason: reg.reason }
+        },
+        testSendPushNotification: async (customTitle = null, customBody = null) => {
+          let currentToken = expoPushToken
+          if (!currentToken) {
+            const reg = await registerForPushNotificationsAsync()
+            if (reg.success && reg.token) {
+              currentToken = reg.token
+              setExpoPushToken(reg.token)
+              setNotificationPermissionStatus(reg.permissionStatus)
+              if (currentUser) syncPushTokenWithBackend(reg.token, currentUser)
+            } else {
+              return { success: false, message: reg.reason || 'Izin notifikasi belum diaktifkan.' }
+            }
+          }
+
+          const title = customTitle || '🔔 Uji Push Notifikasi IPL Warga'
+          const body = customBody || 'Notifikasi push berhasil terhubung dari sistem backend IPL Warga!'
+
+          // 1. Coba kirim via Laravel API
+          const apiUrl = await getLaravelApiUrl()
+          try {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 5000)
+            const res = await fetch(`${apiUrl}/api/notifications/test`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({
+                token: currentToken,
+                title,
+                body,
+                user_id: currentUser?.id
+              }),
+              signal: controller.signal
+            })
+            clearTimeout(timeoutId)
+
+            if (res.ok) {
+              return {
+                success: true,
+                via: 'laravel',
+                message: 'Push notification berhasil dikirim melalui Laravel API!'
+              }
+            }
+          } catch (_) {}
+
+          // 2. Fallback notifikasi lokal pada perangkat
+          await sendLocalNotification({
+            title,
+            body,
+            data: { screen: 'Tagihan' }
+          })
+          return {
+            success: true,
+            via: 'local',
+            message: 'Notifikasi berhasil dipicu langsung pada perangkat ini!'
+          }
+        }
       }}
     >
       {children}

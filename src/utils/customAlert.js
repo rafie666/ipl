@@ -110,3 +110,14 @@ export function initializeCustomAlertOverride() {
 
 // Auto-run override when module is imported
 initializeCustomAlertOverride()
+
+// Global browser window.alert override so no native browser dialog ever appears
+if (typeof window !== 'undefined') {
+  try {
+    window.alert = (msg) => {
+      Alert.alert('Pemberitahuan', String(msg || ''))
+    }
+  } catch (e) {
+    // Ignore if window.alert is read-only
+  }
+}

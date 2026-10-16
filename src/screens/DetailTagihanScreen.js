@@ -38,6 +38,7 @@ import {
   Trash2
 } from 'lucide-react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { uploadImageToSupabaseStorage } from '../api/supabase'
 import { useApp } from '../context/AppContext'
 import { colors, shadows, radius, spacing, typography } from '../utils/theme'
 import {
@@ -51,9 +52,13 @@ import { ALASAN_PENOLAKAN_PRESET } from '../data/initialData'
 import AppHeader from '../components/AppHeader'
 import AppModal from '../components/AppModal'
 import AppButton from '../components/AppButton'
+import ReceiptModal from '../components/ReceiptModal'
+import { Button } from '../components/ui/Button'
+import { Badge } from '../components/ui/Badge'
 
 export default function DetailTagihanScreen({ route, navigation }) {
   const { tagihan: initialTagihan } = route.params || {}
+  const [kwitansiModalVisible, setKwitansiModalVisible] = useState(false)
   const {
     isWarga,
     isAdminLoggedIn,
@@ -137,7 +142,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          quality: 0.7,
+          quality: 0.35,
           base64: true
         })
 
@@ -169,7 +174,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
         const result = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
-          quality: 0.7,
+          quality: 0.35,
           base64: true
         })
 
@@ -219,7 +224,23 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
     setUploading(true)
     try {
-      const proofPayloadUrl = selectedImage.base64 || selectedImage.uri
+      let proofPayloadUrl = null
+      if (selectedImage) {
+        const uploadRes = await uploadImageToSupabaseStorage({
+          bucket: 'bukti-transfer',
+          path: `tagihan/${tagihan?.id || 'trx'}/${Date.now()}_${selectedImage.fileName || 'bukti.jpg'}`,
+          base64: selectedImage.base64,
+          uri: selectedImage.uri,
+          contentType: 'image/jpeg'
+        })
+
+        if (uploadRes.success && uploadRes.publicUrl) {
+          proofPayloadUrl = uploadRes.publicUrl
+        } else {
+          proofPayloadUrl = selectedImage.base64 || selectedImage.uri
+        }
+      }
+
       const res = await bayarTagihan(tagihan.id, {
         metode: tagihan.metode || tagihan.metodeBayar || 'Transfer Bank',
         nominal: tagihan.total,
@@ -425,7 +446,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
           <Text style={styles.totalPrice}>{formatRupiah(finalTotal)}</Text>
           <View style={styles.kodeUnikPill}>
-            <Sparkles size={13} color="#D97706" />
+            <ShieldCheck size={13} color="#D97706" />
             <Text style={styles.kodeUnikPillText}>
               Termasuk 3 Digit Kode Unik Warga: <Text style={{ fontWeight: '800' }}>{kodeUnik}</Text>
             </Text>
@@ -691,6 +712,16 @@ export default function DetailTagihanScreen({ route, navigation }) {
               Buka Form Pembayaran Lengkap (QRIS & Bank)
             </Text>
           </TouchableOpacity>
+        ) : null}
+
+        {Boolean(isLunas) ? (
+          <Button
+            title="Lihat Kuitansi Resmi"
+            variant="primary"
+            icon={<Receipt size={18} color={colors.primaryDark} />}
+            onPress={() => setKwitansiModalVisible(true)}
+            style={{ marginTop: 12, marginBottom: 8 }}
+          />
         ) : null}
 
         {/* Action Buttons: Admin / RT (Verifikasi & Tolak) */}
@@ -1070,6 +1101,22 @@ export default function DetailTagihanScreen({ route, navigation }) {
           />
         </View>
       </AppModal>
+
+      {/* §4.5 Modal Kuitansi */}
+      <ReceiptModal
+        visible={kwitansiModalVisible}
+        data={{
+          receiptId: tagihan.noKwitansi || `KW/2026/${String(tagihan.bulan || '10').padStart(2, '0')}/B12-004`,
+          amount: tagihan.total || 150000,
+          paidAt: tagihan.tanggalBayar || new Date(),
+          residentName: namaWarga,
+          unitCode: `Blok ${blok} / No. ${noRumah}`,
+          paymentMethod: tagihan.metode || 'QRIS Dinamis',
+          recipientName: recipientLabel,
+          status: 'paid',
+        }}
+        onClose={() => setKwitansiModalVisible(false)}
+      />
     </View>
   )
 }
@@ -1081,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40
+    paddingBottom: 70
   },
   statusCard: {
     backgroundColor: colors.card,
@@ -1452,7 +1499,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     marginTop: 6,
-    ...shadows.redGlow
+    ...shadows.soft
   },
   btnOpenUploadPickerText: {
     fontSize: 13,
@@ -1510,7 +1557,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 13,
     marginTop: 4,
-    ...shadows.redGlow
+    ...shadows.soft
   },
   payBtnText: {
     color: colors.white,

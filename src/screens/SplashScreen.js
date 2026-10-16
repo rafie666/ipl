@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
-    ...shadows.redGlow
+    ...shadows.medium
   },
   title: {
     fontSize: 26,

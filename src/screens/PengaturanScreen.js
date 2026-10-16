@@ -43,10 +43,33 @@ import {
   MapPin,
   Navigation,
   Compass,
-  ExternalLink
+  ExternalLink,
+  Calendar,
+  Clock,
+  Sparkles,
+  Play,
+  Check,
+  Zap,
+  CalendarDays,
+  Bell,
+  Send
 } from 'lucide-react-native'
+import * as Clipboard from 'expo-clipboard'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY, isSupabaseConfigured } from '../api/supabase'
+import {
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY,
+  isSupabaseConfigured,
+  setCustomSupabaseCredentials,
+  uploadImageToSupabaseStorage
+} from '../api/supabase'
+import {
+  getMootaConfig,
+  saveMootaConfig,
+  testMootaConnection,
+  DEFAULT_MOOTA_CONFIG
+} from '../services/mootaService'
+import { copyToClipboard } from '../utils/clipboard'
 import { useApp } from '../context/AppContext'
 import { colors, spacing, radius, shadows } from '../utils/theme'
 import AppHeader from '../components/AppHeader'
@@ -65,6 +88,9 @@ export default function PengaturanScreen({ navigation }) {
     isWarga,
     isAdmin,
     isRT,
+    isRW,
+    isBendahara,
+    isPengurus,
     config,
     updateConfig,
     rts,
@@ -85,11 +111,116 @@ export default function PengaturanScreen({ navigation }) {
     qrisAccounts = [],
     addQrisAccount,
     updateQrisAccount,
-    deleteQrisAccount
+    deleteQrisAccount,
+    updateAutoBillingConfig,
+    triggerManualBillingCatchUp,
+    calculateNextRunDate,
+    expoPushToken,
+    laravelApiUrl,
+    setLaravelApiUrl,
+    notificationPermissionStatus,
+    testSendPushNotification,
+    refreshPushToken
   } = useApp()
 
   // Tab state for Admin / RT
-  const [adminTab, setAdminTab] = useState('iuran')
+  const [adminTab, setAdminTab] = useState('jadwal')
+  const [testingPush, setTestingPush] = useState(false)
+  const [refreshingToken, setRefreshingToken] = useState(false)
+  const [savingApiUrl, setSavingApiUrl] = useState(false)
+  const [customApiUrlInput, setCustomApiUrlInput] = useState(laravelApiUrl || 'http://10.0.2.2:8000')
+
+  useEffect(() => {
+    if (laravelApiUrl) setCustomApiUrlInput(laravelApiUrl)
+  }, [laravelApiUrl])
+
+  const handleTestPush = async () => {
+    setTestingPush(true)
+    try {
+      const res = await testSendPushNotification()
+      if (res.success) {
+        Alert.alert(
+          'Push Notifikasi Berhasil! 📬',
+          `${res.message}\n\nJalur pengiriman: ${res.via === 'laravel' ? 'Laravel Backend API (Expo Server)' : 'Lokal Perangkat'}\n\nSilakan periksa panel notifikasi pada HP Anda.`
+        )
+      } else {
+        Alert.alert('Gagal Mengirim Notifikasi', res.message || 'Terjadi kesalahan saat mengirim notifikasi.')
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Gagal mengirim push notifikasi.')
+    } finally {
+      setTestingPush(false)
+    }
+  }
+
+  const handleRefreshPushToken = async () => {
+    setRefreshingToken(true)
+    try {
+      const res = await refreshPushToken()
+      if (res.success) {
+        Alert.alert('Sukses', 'Token perangkat berhasil diperbarui dan disinkronkan ke backend!')
+      } else {
+        Alert.alert('Perhatian', res.reason || 'Izin notifikasi tidak diberikan.')
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Gagal mendaftarkan ulang perangkat.')
+    } finally {
+      setRefreshingToken(false)
+    }
+  }
+
+  const handleSaveApiUrl = async () => {
+    setSavingApiUrl(true)
+    try {
+      await setLaravelApiUrl(customApiUrlInput.trim())
+      Alert.alert('Tersimpan', `URL Backend Laravel diperbarui ke:\n${customApiUrlInput.trim()}`)
+    } catch (e) {
+      Alert.alert('Error', 'Gagal menyimpan URL API.')
+    } finally {
+      setSavingApiUrl(false)
+    }
+  }
+
+  const handleCopyPushToken = async () => {
+    if (!expoPushToken) {
+      Alert.alert('Perhatian', 'Belum ada push token. Silakan ketuk tombol "Daftarkan Ulang Perangkat".')
+      return
+    }
+    await Clipboard.setStringAsync(expoPushToken)
+    Alert.alert('Tersalin 📋', 'Expo Push Token berhasil disalin ke clipboard.')
+  }
+
+  // Auto Billing Settings & Monitoring State
+  const autoBilling = config?.autoBilling || {
+    enabled: true,
+    publishDay: 5,
+    dueDay: 20,
+    scope: 'ALL',
+    last_run_at: null,
+    last_run_period: null,
+    last_run_status: 'standby',
+    last_run_created_count: 0,
+    last_run_skipped_count: 0,
+    last_run_message: 'Sistem otomatisasi aktif menunggu jadwal tanggal terbit.',
+    scheduler_heartbeat: new Date().toISOString(),
+    scheduler_status: 'RUNNING'
+  }
+
+  const [autoEnabled, setAutoEnabled] = useState(autoBilling.enabled !== false)
+  const [publishDay, setPublishDay] = useState(String(autoBilling.publishDay || 5))
+  const [dueDay, setDueDay] = useState(String(autoBilling.dueDay || 20))
+  const [billingScope, setBillingScope] = useState(autoBilling.scope || 'ALL')
+  const [savingJadwal, setSavingJadwal] = useState(false)
+  const [testingJadwal, setTestingJadwal] = useState(false)
+
+  useEffect(() => {
+    if (config?.autoBilling) {
+      setAutoEnabled(config.autoBilling.enabled !== false)
+      setPublishDay(String(config.autoBilling.publishDay || 5))
+      setDueDay(String(config.autoBilling.dueDay || 20))
+      setBillingScope(config.autoBilling.scope || 'ALL')
+    }
+  }, [config?.autoBilling])
 
   // ==============================================================
   // 0. STATE FOR REKENING & QRIS (RT VS RW SCOPE)
@@ -212,6 +343,80 @@ export default function PengaturanScreen({ navigation }) {
   const [supabaseKey, setSupabaseKey] = useState(DEFAULT_SUPABASE_ANON_KEY)
   const [savingAdmin, setSavingAdmin] = useState(false)
 
+  // ==============================================================
+  // 6. STATE FOR MOOTA PAYMENT GATEWAY SANDBOX
+  // ==============================================================
+  const [mootaToken, setMootaToken] = useState(DEFAULT_MOOTA_CONFIG.API_TOKEN)
+  const [mootaBankId, setMootaBankId] = useState(DEFAULT_MOOTA_CONFIG.BANK_ID)
+  const [mootaTesting, setMootaTesting] = useState(false)
+  const [mootaStatusMsg, setMootaStatusMsg] = useState(null)
+  const [savingMoota, setSavingMoota] = useState(false)
+  const webhookUrl = `${(supabaseUrl || DEFAULT_SUPABASE_URL).replace(/\/$/, '')}/functions/v1/moota-webhook`
+
+  useEffect(() => {
+    async function loadMoota() {
+      const cfg = await getMootaConfig()
+      if (cfg) {
+        if (cfg.API_TOKEN) setMootaToken(cfg.API_TOKEN)
+        if (cfg.BANK_ID) setMootaBankId(cfg.BANK_ID)
+      }
+    }
+    loadMoota()
+  }, [])
+
+  const handleTestMoota = async () => {
+    setMootaTesting(true)
+    setMootaStatusMsg(null)
+    try {
+      const res = await testMootaConnection()
+      if (res.success) {
+        const bankName = res.activeBank?.label || res.activeBank?.bank_type || 'Bank Transfer Sandbox'
+        const accNo = res.activeBank?.account_number || '090908080777'
+        const holder = res.activeBank?.atas_nama || res.activeBank?.username || 'Rafi Nurrahman'
+        const bal = Number(res.activeBank?.balance || 0).toLocaleString('id-ID')
+        const points = res.user?.point ?? 0
+
+        let pointNotice = ''
+        if (points === 0) {
+          pointNotice = '\n\n⚠️ Poin Moota Anda saat ini 0. Bot Moota memerlukan poin aktif untuk scraping mutasi otomatis dari KlikBCA/Bank riil.'
+        }
+
+        setMootaStatusMsg({
+          success: true,
+          text: `✅ Terhubung ke Moota Sandbox!\nAkun: ${bankName} (${accNo} a.n ${holder})\nSaldo Moota: Rp ${bal} | Sisa Poin: ${points}`
+        })
+        Alert.alert(
+          'Koneksi Moota Berhasil!',
+          `Akun Moota Sandbox terhubung dengan sukses!\n\n• Bank: ${bankName}\n• No. Rekening: ${accNo}\n• Pemilik: ${holder}\n• Saldo di Moota: Rp ${bal}\n• Sisa Poin Moota: ${points}${pointNotice}`
+        )
+      } else {
+        setMootaStatusMsg({ success: false, text: `❌ ${res.message}` })
+        Alert.alert('Koneksi Moota Gagal', res.message)
+      }
+    } catch (e) {
+      setMootaStatusMsg({ success: false, text: `❌ ${e.message}` })
+    } finally {
+      setMootaTesting(false)
+    }
+  }
+
+  const handleSimpanMoota = async () => {
+    setSavingMoota(true)
+    try {
+      await saveMootaConfig({
+        API_TOKEN: mootaToken.trim(),
+        BANK_ID: mootaBankId.trim(),
+        API_URL: DEFAULT_MOOTA_CONFIG.API_URL,
+        IS_ACTIVE: true
+      })
+      Alert.alert('Tersimpan', 'Pengaturan Moota Sandbox berhasil disimpan!')
+    } catch (e) {
+      Alert.alert('Gagal', 'Gagal menyimpan pengaturan Moota.')
+    } finally {
+      setSavingMoota(false)
+    }
+  }
+
   // Init data
   useEffect(() => {
     if (isWarga) {
@@ -230,8 +435,8 @@ export default function PengaturanScreen({ navigation }) {
     }
 
     if (config) {
-      setRwNamaLingkungan(config.namaLingkungan || 'Perumahan Griya Indah')
-      setRwNomor(config.rw || config.rtRw || 'RW 15')
+      setRwNamaLingkungan(config.namaLingkungan || 'Perumahan Alam Tirta Lestari')
+      setRwNomor((config.rw && !config.rw.includes('-')) ? config.rw : 'RW 01')
       setRwKelurahan(config.kelurahan || 'Ciomas Rahayu')
       setRwKecamatan(config.kecamatan || 'Ciomas')
       setRwKota(config.kota || 'Kabupaten Bogor')
@@ -591,12 +796,26 @@ export default function PengaturanScreen({ navigation }) {
     }
     const currentOwnerId = newQrisOwnerType === 'RW' ? 'RW' : newQrisRtId
     const fallbackImage = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=QRIS_WARGAKU_${encodeURIComponent(newQrisName.trim())}`
+    
+    let finalImageUrl = newQrisImageUrl.trim()
+    if (finalImageUrl && finalImageUrl.startsWith('data:')) {
+      const upRes = await uploadImageToSupabaseStorage({
+        bucket: 'bukti-transfer',
+        path: `qris/qris_${Date.now()}.jpg`,
+        base64: finalImageUrl,
+        contentType: 'image/jpeg'
+      })
+      if (upRes.success && upRes.publicUrl) {
+        finalImageUrl = upRes.publicUrl
+      }
+    }
+
     await addQrisAccount({
       owner_type: newQrisOwnerType,
       owner_id: currentOwnerId,
       qris_name: newQrisName.trim(),
       nmid: newQrisNmid.trim(),
-      image_url: newQrisImageUrl.trim() || fallbackImage,
+      image_url: finalImageUrl || fallbackImage,
       is_primary: newIsPrimaryQris,
       is_active: true
     })
@@ -627,12 +846,26 @@ export default function PengaturanScreen({ navigation }) {
     }
     const currentOwnerId = editQrisOwnerType === 'RW' ? 'RW' : editQrisRtId
     const fallbackImage = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=QRIS_WARGAKU_${encodeURIComponent(editQrisName.trim())}`
+
+    let finalImageUrl = editQrisImageUrl.trim()
+    if (finalImageUrl && finalImageUrl.startsWith('data:')) {
+      const upRes = await uploadImageToSupabaseStorage({
+        bucket: 'bukti-transfer',
+        path: `qris/qris_${Date.now()}.jpg`,
+        base64: finalImageUrl,
+        contentType: 'image/jpeg'
+      })
+      if (upRes.success && upRes.publicUrl) {
+        finalImageUrl = upRes.publicUrl
+      }
+    }
+
     await updateQrisAccount(editingQris.id, {
       owner_type: editQrisOwnerType,
       owner_id: currentOwnerId,
       qris_name: editQrisName.trim(),
       nmid: editQrisNmid.trim(),
-      image_url: editQrisImageUrl.trim() || fallbackImage,
+      image_url: finalImageUrl || fallbackImage,
       is_primary: editIsPrimaryQris
     })
     setModalEditQris(false)
@@ -660,11 +893,10 @@ export default function PengaturanScreen({ navigation }) {
   const handleSimpanDatabase = async () => {
     try {
       setSavingAdmin(true)
-      await AsyncStorage.setItem('wargaku_supabase_url', supabaseUrl.trim())
-      await AsyncStorage.setItem('wargaku_supabase_key', supabaseKey.trim())
-      Alert.alert('Sukses', 'Kredensial Supabase berhasil disimpan.')
+      await setCustomSupabaseCredentials(supabaseUrl.trim(), supabaseKey.trim())
+      Alert.alert('Sukses', 'Kredensial Supabase berhasil disimpan dan koneksi langsung aktif!')
     } catch (e) {
-      Alert.alert('Error', 'Gagal menyimpan database.')
+      Alert.alert('Error', 'Gagal menyimpan database: ' + (e?.message || 'Error'))
     } finally {
       setSavingAdmin(false)
     }
@@ -688,17 +920,132 @@ export default function PengaturanScreen({ navigation }) {
     )
   }
 
+  const handleSaveJadwal = async () => {
+    const pDay = parseInt(publishDay, 10)
+    const dDay = parseInt(dueDay, 10)
+
+    if (isNaN(pDay) || pDay < 1 || pDay > 31) {
+      Alert.alert('Peringatan', 'Tanggal terbit harus di antara tanggal 1 sampai 31.')
+      return
+    }
+    if (isNaN(dDay) || dDay < 1 || dDay > 31) {
+      Alert.alert('Peringatan', 'Tanggal jatuh tempo harus di antara tanggal 1 sampai 31.')
+      return
+    }
+
+    setSavingJadwal(true)
+    try {
+      const res = await updateAutoBillingConfig({
+        enabled: autoEnabled,
+        publishDay: pDay,
+        dueDay: dDay,
+        scope: billingScope
+      })
+      if (res.success) {
+        Alert.alert(
+          'Jadwal Disimpan! 📅',
+          `Pengaturan otomatisasi tagihan bulanan berhasil diperbarui:\n\n• Status: ${autoEnabled ? 'AKTIF 🟢' : 'NONAKTIF 🔴'}\n• Tanggal Terbit: Tanggal ${pDay} setiap bulan\n• Jatuh Tempo: Tanggal ${dDay} setiap bulan\n• Lingkup: ${billingScope}\n\nPengaturan telah disimpan ke database & berlaku untuk periode berikutnya.`
+        )
+      } else {
+        Alert.alert('Gagal', res.message || 'Gagal menyimpan pengaturan jadwal.')
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Terjadi kesalahan saat menyimpan jadwal.')
+    } finally {
+      setSavingJadwal(false)
+    }
+  }
+
+  const handleTestAutoBilling = async () => {
+    Alert.alert(
+      'Uji Otomatisasi Tagihan',
+      'Sistem akan mengecek jadwal & menerbitkan tagihan IPL periode bulan berjalan bagi warga yang belum memiliki tagihan.\n\nJika tagihan sudah pernah dibuat, sistem akan melewatinya secara idempoten (0 tagihan ganda).\n\nLanjutkan?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Jalankan Sekarang',
+          onPress: async () => {
+            setTestingJadwal(true)
+            try {
+              const res = await triggerManualBillingCatchUp()
+              if (res.success) {
+                Alert.alert(
+                  'Hasil Eksekusi Otomatisasi',
+                  `${res.message}\n\n• Tagihan Baru Dibuat: ${res.createdCount}\n• Periode: ${res.period}\n\nData tagihan langsung tersinkronisasi ke dashboard pengelola dan akun warga.`
+                )
+              } else {
+                Alert.alert('Gagal', res.message || 'Proses pembuatan tagihan gagal.')
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Terjadi kesalahan saat memproses tagihan.')
+            } finally {
+              setTestingJadwal(false)
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const formatRupiah = (num) => 'Rp ' + (num || 0).toLocaleString('id-ID')
   const canGoBack = navigation.canGoBack()
 
-  // Tabs for Admin
-  const adminTabsList = [
-    { id: 'iuran', label: 'Pos Iuran', icon: Layers },
-    { id: 'rekening', label: 'Rekening & QRIS', icon: CreditCard },
-    { id: 'rw', label: 'Profil RW', icon: Building },
-    { id: 'rt', label: 'Profil RT', icon: Landmark },
-    ...(isAdmin ? [{ id: 'system', label: 'Database', icon: Database }] : [])
-  ]
+  // Tabs tailored per Role/Jabatan
+  const adminTabsList = (() => {
+    if (isBendahara) {
+      return [
+        { id: 'jadwal', label: 'Jadwal Otomatis', icon: Calendar },
+        { id: 'rekening', label: 'Rekening & QRIS', icon: CreditCard },
+        { id: 'moota', label: 'Moota Sandbox', icon: ShieldCheck },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers },
+        { id: 'push', label: 'Push Notif', icon: Bell }
+      ]
+    }
+    if (isPengurus) {
+      return [
+        { id: 'rw', label: 'Profil RW', icon: Building },
+        { id: 'rt', label: 'Profil RT', icon: Landmark },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers },
+        { id: 'push', label: 'Push Notif', icon: Bell }
+      ]
+    }
+    if (isRT) {
+      return [
+        { id: 'jadwal', label: 'Jadwal Otomatis', icon: Calendar },
+        { id: 'rt', label: 'Profil RT', icon: Landmark },
+        { id: 'rekening', label: 'Rekening & QRIS', icon: CreditCard },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers },
+        { id: 'push', label: 'Push Notif', icon: Bell }
+      ]
+    }
+    if (isRW) {
+      return [
+        { id: 'jadwal', label: 'Jadwal Otomatis', icon: Calendar },
+        { id: 'rw', label: 'Profil RW', icon: Building },
+        { id: 'rt', label: 'Profil RT', icon: Landmark },
+        { id: 'rekening', label: 'Rekening & QRIS', icon: CreditCard },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers },
+        { id: 'push', label: 'Push Notif', icon: Bell }
+      ]
+    }
+    return [
+      { id: 'jadwal', label: 'Jadwal Otomatis', icon: Calendar },
+      { id: 'iuran', label: 'Pos Iuran', icon: Layers },
+      { id: 'rekening', label: 'Rekening & QRIS', icon: CreditCard },
+      { id: 'moota', label: 'Moota Sandbox', icon: ShieldCheck },
+      { id: 'rw', label: 'Profil RW', icon: Building },
+      { id: 'rt', label: 'Profil RT', icon: Landmark },
+      { id: 'push', label: 'Push Notif', icon: Bell },
+      ...(isAdmin ? [{ id: 'system', label: 'Database', icon: Database }] : [])
+    ]
+  })()
+
+  // Pastikan tab aktif valid sesuai hak akses jabatan
+  useEffect(() => {
+    if (adminTabsList.length > 0 && !adminTabsList.some((t) => t.id === adminTab)) {
+      setAdminTab(adminTabsList[0].id)
+    }
+  }, [isBendahara, isPengurus, isRT, isRW, isAdmin])
 
   // Filtered Accounts
   const filteredBanks = bankAccounts.filter((b) => {
@@ -719,9 +1066,36 @@ export default function PengaturanScreen({ navigation }) {
     <View style={styles.container}>
       {/* Header Mobile-First */}
       <AppHeader
-        title={isWarga ? 'Profil & Pengaturan Akun' : 'Pengaturan Sistem & Pos Iuran'}
-        subtitle={isWarga ? 'Data identitas warga & alamat rumah' : 'Konfigurasi tarif iuran, identitas RT/RW, dan rekening'}
-        onBack={canGoBack ? () => navigation.goBack() : undefined}
+        title={
+          isWarga
+            ? 'Profil & Pengaturan Akun'
+            : isBendahara
+            ? 'Pengaturan Keuangan & Rekening'
+            : isPengurus
+            ? 'Pengaturan Fasum & Wilayah'
+            : isRT
+            ? 'Pengaturan Wilayah RT'
+            : isRW
+            ? 'Pengaturan Wilayah RW'
+            : 'Pengaturan Sistem & Database'
+        }
+        subtitle={
+          isWarga
+            ? 'Data identitas warga & alamat rumah'
+            : isBendahara
+            ? 'Konfigurasi tarif iuran, rekening penerima kas, dan Moota'
+            : isPengurus
+            ? 'Identitas lingkungan RT/RW dan master tarif pos iuran'
+            : 'Konfigurasi tarif iuran, identitas RT/RW, dan rekening'
+        }
+        navigation={navigation}
+        onBack={() => {
+          if (navigation?.canGoBack && navigation.canGoBack()) {
+            navigation.goBack()
+          } else {
+            navigation?.navigate('Main', { screen: 'DashboardTab' })
+          }
+        }}
       />
 
       {/* Admin/RT Horizontal Scrollable Tabs */}
@@ -836,6 +1210,353 @@ export default function PengaturanScreen({ navigation }) {
                 style={{ marginTop: spacing.md }}
               />
             </AppCard>
+
+            {/* KARTU PUSH NOTIFIKASI UNTUK WARGA */}
+            <AppCard style={{ marginTop: spacing.md }}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Bell size={18} color={colors.primary} />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.cardTitle}>Pemberitahuan & Notifikasi HP</Text>
+                    <View style={[styles.serverStatusPill, { backgroundColor: expoPushToken ? '#DCFCE7' : '#FEF3C7' }]}>
+                      <Text style={[styles.serverStatusPillText, { color: expoPushToken ? '#166534' : '#B45309' }]}>
+                        {expoPushToken ? 'AKTIF 🟢' : 'BELUM AKTIF 🟡'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardSubtitle}>
+                    Terima kabar tagihan iuran baru, pengumuman, dan konfirmasi pembayaran di HP Anda
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title={testingPush ? 'Mengirim...' : 'Uji Notifikasi'}
+                    onPress={handleTestPush}
+                    loading={testingPush}
+                    icon={<Send size={15} color={colors.white} />}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title={refreshingToken ? 'Memperbarui...' : 'Aktifkan / Refresh'}
+                    variant="secondary"
+                    onPress={handleRefreshPushToken}
+                    loading={refreshingToken}
+                    icon={<RotateCcw size={15} color={colors.primary} />}
+                  />
+                </View>
+              </View>
+            </AppCard>
+          </View>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 2: ADMIN - TAB: JADWAL OTOMATISASI TAGIHAN IPL            */}
+        {/* ============================================================== */}
+        {!isWarga && adminTab === 'jadwal' && (
+          <View style={{ gap: spacing.md }}>
+            {/* KARTU 1: MONITORING STATUS SERVER SCHEDULER */}
+            <AppCard style={styles.schedulerMonitorCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Zap size={20} color="#059669" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.cardTitle}>Status Scheduler Server</Text>
+                    <View style={[styles.serverStatusPill, { backgroundColor: autoBilling.enabled ? '#DCFCE7' : '#FEE2E2' }]}>
+                      <View style={[styles.livePulseDot, { backgroundColor: autoBilling.enabled ? '#16A34A' : '#DC2626' }]} />
+                      <Text style={[styles.serverStatusPillText, { color: autoBilling.enabled ? '#15803D' : '#B91C1C' }]}>
+                        {autoBilling.enabled ? 'SCHEDULER AKTIF' : 'NONAKTIF'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardSubtitle}>Zona Waktu: Asia/Jakarta (WIB) • Berjalan di Server Backend</Text>
+                </View>
+              </View>
+
+              {/* Status Grid */}
+              <View style={styles.schedulerGrid}>
+                {/* Jadwal Terbit Berikutnya */}
+                <View style={styles.schedulerGridItem}>
+                  <View style={styles.schedulerItemHead}>
+                    <CalendarDays size={14} color="#4F46E5" />
+                    <Text style={styles.schedulerItemLabel}>Jadwal Terbit Berikutnya</Text>
+                  </View>
+                  <Text style={styles.schedulerItemValue}>
+                    {calculateNextRunDate(autoBilling.publishDay).formatted}
+                  </Text>
+                  <Text style={styles.schedulerItemSub}>
+                    Pukul 00:05 WIB (Otomatis)
+                  </Text>
+                </View>
+
+                {/* Eksekusi Terakhir */}
+                <View style={styles.schedulerGridItem}>
+                  <View style={styles.schedulerItemHead}>
+                    <Clock size={14} color="#059669" />
+                    <Text style={styles.schedulerItemLabel}>Periode Terakhir Terbit</Text>
+                  </View>
+                  <Text style={styles.schedulerItemValue}>
+                    {autoBilling.last_run_period || 'Oktober 2026'}
+                  </Text>
+                  <Text style={styles.schedulerItemSub}>
+                    {autoBilling.last_run_created_count || 0} tagihan dibuat
+                  </Text>
+                </View>
+              </View>
+
+              {/* Server Heartbeat Banner */}
+              <View style={styles.heartbeatBanner}>
+                <View style={styles.heartbeatLeft}>
+                  <CheckCircle2 size={16} color="#059669" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.heartbeatTitle}>Backend Daemon & Database Terhubung</Text>
+                    <Text style={styles.heartbeatDesc}>
+                      {autoBilling.last_run_message || 'Sistem siap menerbitkan tagihan bulanan secara otomatis tanpa harus membuka aplikasi.'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Action Button: Manual Trigger / Catch-Up Test */}
+              <TouchableOpacity
+                style={styles.testSyncBtn}
+                onPress={handleTestAutoBilling}
+                disabled={testingJadwal}
+                activeOpacity={0.85}
+              >
+                {testingJadwal ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Play size={15} color="#FFFFFF" />
+                    <Text style={styles.testSyncBtnText}>Uji / Jalankan Penerbitan Sekarang</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </AppCard>
+
+            {/* KARTU 2: FORM PENGATURAN JADWAL TERBIT & JATUH TEMPO */}
+            <AppCard style={styles.schedulerFormCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#EEF2FF' }]}>
+                  <Calendar size={20} color="#4F46E5" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <Text style={styles.cardTitle}>Pengaturan Jadwal Bulanan</Text>
+                  <Text style={styles.cardSubtitle}>Atur tanggal terbit dan batas waktu pembayaran warga</Text>
+                </View>
+              </View>
+
+              {/* Toggle Aktif / Nonaktif */}
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1, marginRight: spacing.md }}>
+                  <Text style={styles.toggleTitle}>Status Otomatisasi Penerbitan</Text>
+                  <Text style={styles.toggleDesc}>
+                    {autoEnabled
+                      ? 'Aktif — Tagihan akan terbit otomatis setiap bulan sesuai tanggal yang ditentukan.'
+                      : 'Nonaktif — Penerbitan otomatis dihentikan sementara tanpa menghapus tagihan yang ada.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={autoEnabled}
+                  onValueChange={setAutoEnabled}
+                  trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
+                  thumbColor={autoEnabled ? '#16A34A' : '#94A3B8'}
+                />
+              </View>
+
+              {/* Input Tanggal Terbit Bulanan */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputSectionLabel}>
+                  1. Tanggal Terbit Setiap Bulan (1 - 31)
+                </Text>
+                <Text style={styles.inputSectionSub}>
+                  Pilih tanggal eksekusi otomatis penerbitan tagihan warga
+                </Text>
+
+                <View style={styles.presetChipsRow}>
+                  {[1, 5, 10, 15, 25, 31].map((dayNum) => {
+                    const isSelected = parseInt(publishDay, 10) === dayNum
+                    return (
+                      <TouchableOpacity
+                        key={dayNum}
+                        style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                        onPress={() => setPublishDay(String(dayNum))}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                          {dayNum === 31 ? 'Tgl 31 (Akhir Bulan)' : `Tgl ${dayNum}`}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+
+                <TextInput
+                  style={styles.numberInput}
+                  value={publishDay}
+                  onChangeText={setPublishDay}
+                  keyboardType="numeric"
+                  placeholder="Misal: 5"
+                  placeholderTextColor="#94A3B8"
+                  maxLength={2}
+                />
+
+                {/* Info Note: End of Month Rule */}
+                <View style={styles.infoNoteBox}>
+                  <Sparkles size={14} color="#6D28D9" />
+                  <Text style={styles.infoNoteText}>
+                    Aturan Akhir Bulan: Jika diatur tanggal 31, untuk bulan dengan 30 hari (April, Juni, September, November) sistem otomatis menerbitkan di tanggal 30. Untuk Februari terbit di tanggal 28 (atau 29 pada tahun kabisat).
+                  </Text>
+                </View>
+              </View>
+
+              {/* Input Tanggal Jatuh Tempo */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputSectionLabel}>
+                  2. Tanggal Jatuh Tempo Pembayaran (1 - 31)
+                </Text>
+                <Text style={styles.inputSectionSub}>
+                  Batas akhir pembayaran sebelum status tagihan dinyatakan terlambat
+                </Text>
+
+                <View style={styles.presetChipsRow}>
+                  {[10, 15, 20, 25, 30].map((dayNum) => {
+                    const isSelected = parseInt(dueDay, 10) === dayNum
+                    return (
+                      <TouchableOpacity
+                        key={dayNum}
+                        style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                        onPress={() => setDueDay(String(dayNum))}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                          Tgl {dayNum}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+
+                <TextInput
+                  style={styles.numberInput}
+                  value={dueDay}
+                  onChangeText={setDueDay}
+                  keyboardType="numeric"
+                  placeholder="Misal: 20"
+                  placeholderTextColor="#94A3B8"
+                  maxLength={2}
+                />
+              </View>
+
+              {/* Pilihan Scope Tagihan */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputSectionLabel}>
+                  3. Lingkup Tagihan yang Diterbitkan
+                </Text>
+                <View style={styles.scopeButtonsRow}>
+                  {[
+                    { key: 'ALL', label: 'Semua (RT & RW)', desc: 'Iuran RT dan Fasum RW' },
+                    { key: 'RT', label: 'Hanya RT', desc: 'Kas Lingkungan RT saja' },
+                    { key: 'RW', label: 'Hanya RW', desc: 'Kas Fasum RW saja' }
+                  ].map((sc) => {
+                    const isSelected = billingScope === sc.key
+                    return (
+                      <TouchableOpacity
+                        key={sc.key}
+                        style={[styles.scopeBtn, isSelected && styles.scopeBtnActive]}
+                        onPress={() => setBillingScope(sc.key)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.scopeBtnTitle, isSelected && styles.scopeBtnTitleActive]}>
+                          {sc.label}
+                        </Text>
+                        <Text style={[styles.scopeBtnDesc, isSelected && styles.scopeBtnDescActive]}>
+                          {sc.desc}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </View>
+
+              {/* Dynamic Live Summary Box */}
+              <View style={styles.summaryRuleBox}>
+                <Text style={styles.summaryRuleTitle}>📌 Ringkasan Alur Penerbitan:</Text>
+                <Text style={styles.summaryRuleDesc}>
+                  Setiap tanggal {publishDay || '5'} pukul 00:05 WIB, sistem backend akan otomatis menerbitkan tagihan IPL ({billingScope}) untuk seluruh warga aktif sebesar total tarif pos iuran berlaku ditambah kode unik warga. Batas jatuh tempo pembayaran ditetapkan tanggal {dueDay || '20'}. Warga akan langsung menerima notifikasi tagihan baru di aplikasi mereka.
+                </Text>
+              </View>
+
+              <AppButton
+                title={savingJadwal ? 'Menyimpan Pengaturan...' : 'Simpan Pengaturan Jadwal'}
+                onPress={handleSaveJadwal}
+                loading={savingJadwal}
+                style={{ marginTop: spacing.md }}
+              />
+            </AppCard>
+
+            {/* KARTU 3: PROTOKOL KEAMANAN & IDEMPOTENSI (ANTI-TAGIHAN GANDA) */}
+            <AppCard style={styles.securityProtocolCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#F0FDF4' }]}>
+                  <ShieldCheck size={20} color="#16A34A" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <Text style={styles.cardTitle}>Protokol Keamanan & Anti-Tagihan Ganda</Text>
+                  <Text style={styles.cardSubtitle}>Standar kepatuhan database dan integritas data keuangan</Text>
+                </View>
+              </View>
+
+              <View style={styles.securityItemsList}>
+                <View style={styles.securityItem}>
+                  <Check size={16} color="#16A34A" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.securityItemTitle}>Idempotensi Database Mutlak (Unique Index)</Text>
+                    <Text style={styles.securityItemDesc}>
+                      Format ID tagihan bersifat deterministik (tag-TAHUN-BULAN-SCOPE-WARGA). Database PostgreSQL Supabase menolak duplikasi secara fisik.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.securityItem}>
+                  <Check size={16} color="#16A34A" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.securityItemTitle}>Perlindungan Tagihan yang Sudah Dibayar</Text>
+                    <Text style={styles.securityItemDesc}>
+                      Tagihan yang sudah berstatus 'Lunas' dikunci secara permanen dan tidak akan pernah diubah atau dibuat ulang saat scheduler berjalan.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.securityItem}>
+                  <Check size={16} color="#16A34A" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.securityItemTitle}>Pemisahan Iuran Kegiatan & Acara</Text>
+                    <Text style={styles.securityItemDesc}>
+                      Tagihan kegiatan 17 Agustus, kerja bakti, atau lomba warga memiliki alur terpisah dan tidak tercampur dengan tagihan IPL reguler.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.securityItem}>
+                  <Check size={16} color="#16A34A" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.securityItemTitle}>Pencegahan Notifikasi Berulang</Text>
+                    <Text style={styles.securityItemDesc}>
+                      Notifikasi penerbitan hanya dikirimkan satu kali bersamaan dengan pembuatan tagihan baru, tidak berulang saat jadwal dicek ulang.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </AppCard>
           </View>
         )}
 
@@ -930,7 +1651,7 @@ export default function PengaturanScreen({ navigation }) {
 
               {filteredBanks.length === 0 ? (
                 <AppEmptyState
-                  icon={Landmark}
+                  icon={<Landmark size={48} color={colors.textSecondary} strokeWidth={1.5} />}
                   title="Belum Ada Rekening Bank"
                   description="Tambahkan rekening bank untuk menerima setoran iuran warga."
                 />
@@ -1025,7 +1746,7 @@ export default function PengaturanScreen({ navigation }) {
 
               {filteredQris.length === 0 ? (
                 <AppEmptyState
-                  icon={QrCode}
+                  icon={<QrCode size={48} color={colors.textSecondary} strokeWidth={1.5} />}
                   title="Belum Ada Akun QRIS"
                   description="Tambahkan akun QRIS resmi untuk pembayaran iuran warga."
                 />
@@ -1210,7 +1931,7 @@ export default function PengaturanScreen({ navigation }) {
               <AppButton
                 title="Simpan Profil RW"
                 onPress={handleSimpanRw}
-                icon={Save}
+                icon={<Save size={16} color={colors.white} />}
                 style={{ marginTop: spacing.md }}
               />
             </AppCard>
@@ -1251,7 +1972,7 @@ export default function PengaturanScreen({ navigation }) {
                       </TouchableOpacity>
                     )
                   })}
-                  {isAdmin && (
+                  {(isAdmin || isRW) && (
                     <TouchableOpacity
                       onPress={handleOpenAddRt}
                       style={styles.addRtChip}
@@ -1365,10 +2086,10 @@ export default function PengaturanScreen({ navigation }) {
                   <AppButton
                     title={`Simpan Data & Peta ${activeRt?.name || 'RT'}`}
                     onPress={handleSimpanRt}
-                    icon={Save}
+                    icon={<Save size={16} color={colors.white} />}
                   />
                 </View>
-                {isAdmin && (rts || []).length > 1 && (
+                {(isAdmin || isRW) && (rts || []).length > 1 && (
                   <TouchableOpacity
                     onPress={() => handleHapusRt(activeRt)}
                     style={styles.deleteRtBtn}
@@ -1379,6 +2100,141 @@ export default function PengaturanScreen({ navigation }) {
                   </TouchableOpacity>
                 )}
               </View>
+            </AppCard>
+          </View>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 2: ADMIN - TAB MOOTA: INTEGRASI MOOTA SANDBOX             */}
+        {/* ============================================================== */}
+        {!isWarga && adminTab === 'moota' && (
+          <View>
+            <AppCard>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#FEF3C7' }]}>
+                  <ShieldCheck size={18} color="#D97706" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <Text style={styles.cardTitle}>Integrasi Moota Payment Gateway</Text>
+                  <Text style={styles.cardSubtitle}>
+                    Verifikasi mutasi bank & pelunasan tagihan otomatis menggunakan 3 digit kode unik warga
+                  </Text>
+                </View>
+              </View>
+
+              {/* Status Message */}
+              {mootaStatusMsg && (
+                <View
+                  style={{
+                    backgroundColor: mootaStatusMsg.success ? '#ECFDF5' : '#FEF2F2',
+                    borderColor: mootaStatusMsg.success ? '#A7F3D0' : '#FECACA',
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 16
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: mootaStatusMsg.success ? '#065F46' : '#991B1B',
+                      fontSize: 12,
+                      fontWeight: '700'
+                    }}
+                  >
+                    {mootaStatusMsg.text}
+                  </Text>
+                </View>
+              )}
+
+              {/* Moota API Token */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Moota API Token (Bearer)</Text>
+                <TextInput
+                  style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
+                  value={mootaToken}
+                  onChangeText={setMootaToken}
+                  placeholder="eyJ0eXAiOi..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Moota Bank Account ID */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Moota Bank Account ID (Sandbox)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={mootaBankId}
+                  onChangeText={setMootaBankId}
+                  placeholder="Lagzqp0Pk42"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Webhook Endpoint */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Webhook Endpoint URL (Supabase)</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, backgroundColor: '#F8FAFC', color: colors.textSecondary }]}
+                    value={webhookUrl}
+                    editable={false}
+                  />
+                  <TouchableOpacity
+                    style={[styles.copyBtn, { marginLeft: 8, paddingVertical: 12, paddingHorizontal: 12 }]}
+                    onPress={async () => {
+                      await copyToClipboard(webhookUrl)
+                      Alert.alert('Tersalin', 'Webhook URL berhasil disalin! Masukkan URL ini di menu Webhook dashboard Moota.')
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Copy size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                  Salin URL di atas ke menu <Text style={{ fontWeight: '700' }}>Pengaturan &gt; Webhook</Text> di Dashboard Moota.
+                </Text>
+              </View>
+
+              {/* Buttons */}
+              <View style={{ flexDirection: 'row', marginTop: spacing.sm, gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title={mootaTesting ? 'Menguji...' : '⚡ Test Koneksi Sandbox'}
+                    onPress={handleTestMoota}
+                    loading={mootaTesting}
+                    variant="secondary"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title="Simpan Pengaturan"
+                    onPress={handleSimpanMoota}
+                    loading={savingMoota}
+                    icon={<Save size={16} color={colors.white} />}
+                  />
+                </View>
+              </View>
+            </AppCard>
+
+            {/* Info Mekanisme 3 Digit Kode Unik */}
+            <AppCard style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#DCFCE7' }]}>
+                  <CheckCircle2 size={18} color="#16A34A" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <Text style={[styles.cardTitle, { color: '#166534' }]}>Mekanisme 3 Digit Kode Unik Warga</Text>
+                  <Text style={[styles.cardSubtitle, { color: '#15803D' }]}>
+                    Setiap warga memiliki kode unik tersendiri (contoh: 101, 102, 103). Saat transfer iuran Rp 120.000 dengan kode 101, total menjadi Rp 120.101.
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, color: '#166534', lineHeight: 18, marginTop: 8 }}>
+                Sistem Moota akan mendeteksi mutasi transfer masuk sebesar <Text style={{ fontWeight: '800' }}>Rp 120.101</Text> dan langsung melunasi tagihan warga tersebut secara otomatis tanpa perlu verifikasi manual pengurus!
+              </Text>
             </AppCard>
           </View>
         )}
@@ -1434,7 +2290,7 @@ export default function PengaturanScreen({ navigation }) {
                 title="Simpan Kredensial Database"
                 onPress={handleSimpanDatabase}
                 loading={savingAdmin}
-                icon={Save}
+                icon={<Save size={16} color={colors.white} />}
                 style={{ marginTop: spacing.md }}
               />
             </AppCard>
@@ -1455,9 +2311,120 @@ export default function PengaturanScreen({ navigation }) {
                 title="Reset Data ke Setelan Demo Awal"
                 onPress={handleResetSeluruhData}
                 variant="danger"
-                icon={RotateCcw}
+                icon={<RotateCcw size={16} color={colors.white} />}
                 style={{ marginTop: spacing.md }}
               />
+            </AppCard>
+          </View>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW: ADMIN - TAB PUSH NOTIFIKASI & LARAVEL API INTEGRATION     */}
+        {/* ============================================================== */}
+        {!isWarga && adminTab === 'push' && (
+          <View style={{ gap: spacing.md }}>
+            <AppCard>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.cardIconBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Bell size={20} color="#059669" />
+                </View>
+                <View style={styles.cardHeaderTextCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.cardTitle}>Push Notifikasi Expo & Backend</Text>
+                    <View style={[styles.serverStatusPill, { backgroundColor: expoPushToken ? '#DCFCE7' : '#FEF3C7' }]}>
+                      <Text style={[styles.serverStatusPillText, { color: expoPushToken ? '#166534' : '#B45309' }]}>
+                        {expoPushToken ? 'TERDAFTAR 🟢' : 'BELUM AKTIF 🟡'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardSubtitle}>
+                    Kirim notifikasi tagihan baru, bukti bayar, dan surat ke HP warga via Expo Push Service
+                  </Text>
+                </View>
+              </View>
+
+              {/* Status Izin Notifikasi */}
+              <View style={[styles.infoRow, { borderBottomWidth: 1, borderColor: colors.border, paddingBottom: 12, marginBottom: 12 }]}>
+                <Text style={styles.infoLabel}>Izin Notifikasi HP:</Text>
+                <Text style={{ fontWeight: '700', color: notificationPermissionStatus === 'granted' ? colors.success : colors.warning }}>
+                  {notificationPermissionStatus === 'granted' ? 'Diizinkan (Granted) ✅' : 'Menunggu Izin / Cek Pengaturan HP'}
+                </Text>
+              </View>
+
+              {/* Expo Push Token */}
+              <View style={styles.formGroup}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={styles.label}>Expo Push Token Perangkat Ini</Text>
+                  {expoPushToken ? (
+                    <TouchableOpacity onPress={handleCopyPushToken} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Copy size={13} color={colors.primary} />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>Salin Token</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TextInput
+                  style={[styles.input, { height: 60, textAlignVertical: 'top', backgroundColor: '#F8FAFC' }]}
+                  value={expoPushToken || 'Belum ada token. Ketuk "Daftar Ulang Perangkat" di bawah untuk meminta izin.'}
+                  editable={false}
+                  multiline
+                />
+              </View>
+
+              {/* URL Backend Laravel API */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>URL Backend Laravel API</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 6 }}>
+                  Gunakan IP laptop/PC lokal (contoh: http://192.168.1.5:8000) atau 10.0.2.2 untuk Android Emulator
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={customApiUrlInput}
+                    onChangeText={setCustomApiUrlInput}
+                    placeholder="http://10.0.2.2:8000"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                  />
+                  <AppButton
+                    title={savingApiUrl ? '...' : 'Simpan'}
+                    onPress={handleSaveApiUrl}
+                    loading={savingApiUrl}
+                    style={{ paddingHorizontal: 16 }}
+                  />
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title={testingPush ? 'Mengirim...' : 'Uji Push Notifikasi'}
+                    onPress={handleTestPush}
+                    loading={testingPush}
+                    icon={<Send size={16} color={colors.white} />}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title={refreshingToken ? 'Mendaftarkan...' : 'Daftar Ulang'}
+                    variant="secondary"
+                    onPress={handleRefreshPushToken}
+                    loading={refreshingToken}
+                    icon={<RotateCcw size={16} color={colors.primary} />}
+                  />
+                </View>
+              </View>
+            </AppCard>
+
+            {/* KARTU PANDUAN PENGIRIMAN DARI BACKEND */}
+            <AppCard style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <CheckCircle2 size={18} color="#166534" />
+                <Text style={{ fontWeight: '800', color: '#166534', fontSize: 14 }}>Integrasi Backend Laravel Siap</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: '#166534', lineHeight: 18 }}>
+                Backend Laravel API telah dilengkapi service pengiriman Expo Push (`ExpoPushService`) dan endpoint token (`/api/device-tokens`). Saat tagihan diterbitkan atau pembayaran disetujui di Laravel, notifikasi langsung dikirimkan ke perangkat HP warga terkait secara otomatis!
+              </Text>
             </AppCard>
           </View>
         )}
@@ -2162,8 +3129,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: 110 // Safe area so bottom bar never covers content
+    padding: spacing.md,
+    paddingBottom: 160 // Generous safe area so floating bottom bar never covers content
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -2767,5 +3734,272 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.primaryDark
+  },
+  schedulerMonitorCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg
+  },
+  serverStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3
+  },
+  serverStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5
+  },
+  schedulerGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginVertical: spacing.md
+  },
+  schedulerGridItem: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: spacing.md
+  },
+  schedulerItemHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6
+  },
+  schedulerItemLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B'
+  },
+  schedulerItemValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 2
+  },
+  schedulerItemSub: {
+    fontSize: 11,
+    color: '#94A3B8'
+  },
+  heartbeatBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md
+  },
+  heartbeatLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm
+  },
+  heartbeatTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#15803D',
+    marginBottom: 2
+  },
+  heartbeatDesc: {
+    fontSize: 11,
+    color: '#166534',
+    lineHeight: 16
+  },
+  testSyncBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md
+  },
+  testSyncBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  schedulerFormCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.lg
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: spacing.md
+  },
+  toggleTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B'
+  },
+  toggleDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    lineHeight: 16
+  },
+  inputSection: {
+    marginBottom: spacing.md
+  },
+  inputSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B'
+  },
+  inputSectionSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: spacing.sm
+  },
+  presetChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm
+  },
+  presetChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  presetChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569'
+  },
+  presetChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700'
+  },
+  numberInput: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+    backgroundColor: '#F8FAFC'
+  },
+  infoNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: spacing.xs
+  },
+  infoNoteText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#6B21A8',
+    lineHeight: 16
+  },
+  scopeButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  scopeBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    padding: spacing.sm
+  },
+  scopeBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight
+  },
+  scopeBtnTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155'
+  },
+  scopeBtnTitleActive: {
+    color: colors.primaryDark
+  },
+  scopeBtnDesc: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2
+  },
+  scopeBtnDescActive: {
+    color: colors.primaryDark
+  },
+  summaryRuleBox: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.xs
+  },
+  summaryRuleTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E40AF',
+    marginBottom: 4
+  },
+  summaryRuleDesc: {
+    fontSize: 11,
+    color: '#1E3A8A',
+    lineHeight: 16
+  },
+  securityProtocolCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.lg
+  },
+  securityItemsList: {
+    gap: spacing.sm,
+    marginTop: spacing.sm
+  },
+  securityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  securityItemTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2
+  },
+  securityItemDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16
   }
 })
