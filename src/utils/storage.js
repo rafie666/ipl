@@ -16,9 +16,12 @@ import {
   INITIAL_BANK_ACCOUNTS,
   INITIAL_QRIS_ACCOUNTS,
   INITIAL_NOTIFICATIONS,
-  INITIAL_AUDIT_LOGS
-} from '../data/initialData'
-import { isSupabaseConfigured, supabase } from '../api/supabase'
+  INITIAL_AUDIT_LOGS,
+  INITIAL_RWS,
+  INITIAL_PETUGAS_SATPAM,
+  INITIAL_JADWAL_SATPAM
+} from '../data/initialData.js'
+import { isSupabaseConfigured, supabase } from '../api/supabase.js'
 
 export const STORAGE_KEYS = {
   CONFIG: 'wargaku_config',
@@ -29,6 +32,7 @@ export const STORAGE_KEYS = {
   EVENTS: 'wargaku_events',
   TAGIHAN_EVENTS: 'wargaku_tagihan_events',
   RTS: 'wargaku_rts',
+  RWS: 'wargaku_rws',
   USERS: 'wargaku_users',
   CURRENT_USER: 'wargaku_current_user',
   ADMIN_AUTH: 'wargaku_admin_auth',
@@ -39,7 +43,9 @@ export const STORAGE_KEYS = {
   QRIS_ACCOUNTS: 'wargaku_qris_accounts',
   NOTIFICATIONS: 'wargaku_notifications',
   AUDIT_LOGS: 'wargaku_audit_logs',
-  SEEDED: 'wargaku_seeded_mobile_v2'
+  JADWAL_SATPAM: 'wargaku_jadwal_satpam',
+  PETUGAS_SATPAM: 'wargaku_petugas_satpam',
+  SEEDED: 'wargaku_seeded_mobile_v5'
 }
 
 export async function getStorageItem(key, fallbackValue = null) {
@@ -55,12 +61,18 @@ export async function getStorageItem(key, fallbackValue = null) {
 
 export async function deleteFromSupabase(keyName, itemId) {
   if (!isSupabaseConfigured || !supabase || !itemId) return
-  try {
-    const fullKey = STORAGE_KEYS[keyName?.toUpperCase()] || keyName
-    await supabase.from(fullKey).delete().eq('id', itemId)
-  } catch (err) {
-    console.warn(`Supabase delete [${keyName}/${itemId}] warning:`, err)
-  }
+  // Fire and forget non-blocking
+  ;(async () => {
+    try {
+      const fullKey = STORAGE_KEYS[keyName?.toUpperCase()] || keyName
+      await Promise.race([
+        supabase.from(fullKey).delete().eq('id', itemId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      ])
+    } catch (err) {
+      // Background ignore
+    }
+  })()
 }
 
 export async function saveStorageItem(keyName, data) {
@@ -68,7 +80,7 @@ export async function saveStorageItem(keyName, data) {
     const fullKey = STORAGE_KEYS[keyName?.toUpperCase()] || keyName
     await AsyncStorage.setItem(fullKey, JSON.stringify(data))
 
-    // Background sync ke Supabase
+    // Non-blocking background sync ke Supabase
     if (isSupabaseConfigured && supabase) {
       const knownArrayTables = new Set([
         STORAGE_KEYS.JENIS_IURAN,
@@ -79,6 +91,7 @@ export async function saveStorageItem(keyName, data) {
         STORAGE_KEYS.TAGIHAN_EVENTS,
         STORAGE_KEYS.USERS,
         STORAGE_KEYS.RTS,
+        STORAGE_KEYS.RWS,
         STORAGE_KEYS.PENGADUAN,
         STORAGE_KEYS.SURAT,
         STORAGE_KEYS.KONTAK_DARURAT,
@@ -89,33 +102,29 @@ export async function saveStorageItem(keyName, data) {
       ])
       const singleTables = new Set([STORAGE_KEYS.CONFIG, STORAGE_KEYS.ADMIN_AUTH])
 
-      try {
-        if (Array.isArray(data) && knownArrayTables.has(fullKey)) {
-          const currentIds = data.map((item) => item.id).filter(Boolean)
-          const rows = data.map((item) => ({
-            id: item.id || `row-${Math.random()}`,
-            data: item,
-            updated_at: new Date().toISOString()
-          }))
-          if (rows.length > 0) {
-            await supabase.from(fullKey).upsert(rows)
-            // Hapus data yang sudah tidak ada di list
-            const inFilter = `(${currentIds.map((id) => `"${id}"`).join(',')})`
-            await supabase.from(fullKey).delete().not('id', 'in', inFilter)
-          } else {
-            // Jika array kosong, hapus semua
-            await supabase.from(fullKey).delete().neq('id', '__dummy_impossible_key__')
+      // Fire and forget in background
+      ;(async () => {
+        try {
+          if (Array.isArray(data) && knownArrayTables.has(fullKey)) {
+            const rows = data.map((item) => ({
+              id: item.id || `row-${Math.random()}`,
+              data: item,
+              updated_at: new Date().toISOString()
+            }))
+            if (rows.length > 0) {
+              await supabase.from(fullKey).upsert(rows)
+            }
+          } else if (data && typeof data === 'object' && !Array.isArray(data) && singleTables.has(fullKey)) {
+            await supabase.from(fullKey).upsert({
+              id: 'main',
+              data: data,
+              updated_at: new Date().toISOString()
+            })
           }
-        } else if (data && typeof data === 'object' && !Array.isArray(data) && singleTables.has(fullKey)) {
-          await supabase.from(fullKey).upsert({
-            id: 'main',
-            data: data,
-            updated_at: new Date().toISOString()
-          })
+        } catch (sbErr) {
+          console.warn(`Background Supabase sync [${fullKey}] warning:`, sbErr)
         }
-      } catch (sbErr) {
-        console.warn(`Supabase upsert [${fullKey}] warning:`, sbErr)
-      }
+      })()
     }
   } catch (err) {
     console.error(`Gagal menyimpan ${keyName}:`, err)
@@ -134,6 +143,7 @@ export async function loadInitialStorage() {
     await AsyncStorage.setItem(STORAGE_KEYS.TAGIHAN_EVENTS, JSON.stringify(INITIAL_TAGIHAN_EVENTS))
     await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS))
     await AsyncStorage.setItem(STORAGE_KEYS.RTS, JSON.stringify(INITIAL_RTS))
+    await AsyncStorage.setItem(STORAGE_KEYS.RWS, JSON.stringify(INITIAL_RWS))
     await AsyncStorage.setItem(STORAGE_KEYS.PENGADUAN, JSON.stringify(INITIAL_PENGADUAN))
     await AsyncStorage.setItem(STORAGE_KEYS.SURAT, JSON.stringify(INITIAL_SURAT_PENGANTAR))
     await AsyncStorage.setItem(STORAGE_KEYS.KONTAK_DARURAT, JSON.stringify(INITIAL_KONTAK_DARURAT))
@@ -143,6 +153,14 @@ export async function loadInitialStorage() {
     await AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS))
     await AsyncStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS))
     await AsyncStorage.setItem(STORAGE_KEYS.SEEDED, 'true')
+
+    // Auto sync seed to Supabase
+    saveStorageItem(STORAGE_KEYS.CONFIG, INITIAL_CONFIG)
+    saveStorageItem(STORAGE_KEYS.RWS, INITIAL_RWS)
+    saveStorageItem(STORAGE_KEYS.RTS, INITIAL_RTS)
+    saveStorageItem(STORAGE_KEYS.USERS, INITIAL_USERS)
+    saveStorageItem(STORAGE_KEYS.WARGA, INITIAL_WARGA)
+    saveStorageItem(STORAGE_KEYS.TAGIHAN, INITIAL_TAGIHAN)
   }
 
   return {
@@ -155,6 +173,7 @@ export async function loadInitialStorage() {
     tagihanEvents: await getStorageItem(STORAGE_KEYS.TAGIHAN_EVENTS, INITIAL_TAGIHAN_EVENTS),
     users: await getStorageItem(STORAGE_KEYS.USERS, INITIAL_USERS),
     rts: await getStorageItem(STORAGE_KEYS.RTS, INITIAL_RTS),
+    rws: await getStorageItem(STORAGE_KEYS.RWS, INITIAL_RWS),
     pengaduan: await getStorageItem(STORAGE_KEYS.PENGADUAN, INITIAL_PENGADUAN),
     surat: await getStorageItem(STORAGE_KEYS.SURAT, INITIAL_SURAT_PENGANTAR),
     kontakDarurat: await getStorageItem(STORAGE_KEYS.KONTAK_DARURAT, INITIAL_KONTAK_DARURAT),
@@ -162,7 +181,9 @@ export async function loadInitialStorage() {
     bankAccounts: await getStorageItem(STORAGE_KEYS.BANK_ACCOUNTS, INITIAL_BANK_ACCOUNTS),
     qrisAccounts: await getStorageItem(STORAGE_KEYS.QRIS_ACCOUNTS, INITIAL_QRIS_ACCOUNTS),
     notifications: await getStorageItem(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS),
-    auditLogs: await getStorageItem(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS)
+    auditLogs: await getStorageItem(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS),
+    jadwalSatpam: await getStorageItem(STORAGE_KEYS.JADWAL_SATPAM, INITIAL_JADWAL_SATPAM),
+    petugasSatpam: await getStorageItem(STORAGE_KEYS.PETUGAS_SATPAM, INITIAL_PETUGAS_SATPAM)
   }
 }
 
@@ -248,6 +269,8 @@ export async function resetAllStorageToDefault() {
   await AsyncStorage.setItem(STORAGE_KEYS.PENGADUAN, JSON.stringify(INITIAL_PENGADUAN))
   await AsyncStorage.setItem(STORAGE_KEYS.SURAT, JSON.stringify(INITIAL_SURAT_PENGANTAR))
   await AsyncStorage.setItem(STORAGE_KEYS.KONTAK_DARURAT, JSON.stringify(INITIAL_KONTAK_DARURAT))
+  await AsyncStorage.setItem(STORAGE_KEYS.JADWAL_SATPAM, JSON.stringify(INITIAL_JADWAL_SATPAM))
+  await AsyncStorage.setItem(STORAGE_KEYS.PETUGAS_SATPAM, JSON.stringify(INITIAL_PETUGAS_SATPAM))
   await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, JSON.stringify(INITIAL_ADMIN_AUTH))
   return true
 }

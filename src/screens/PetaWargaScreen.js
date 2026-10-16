@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   modeTabActive: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primary
   },
   modeTabText: {
@@ -1004,7 +1004,7 @@ const styles = StyleSheet.create({
     marginRight: 6
   },
   filterChipActive: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primary
   },
   filterText: {
@@ -1294,11 +1294,11 @@ const styles = StyleSheet.create({
   /* OTHER MODES STYLES */
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 150
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 150
   },
   sectionHeaderTitle: {
     fontSize: 13,
@@ -1428,7 +1428,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.md,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: colors.primarySubtle,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: '#A7F3D0',
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
   infoBannerText: {
     flex: 1,
     fontSize: 11,
-    color: '#065F46',
+    color: colors.primaryDark,
     lineHeight: 16
   },
   poskoCard: {
@@ -1454,7 +1454,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: '#4F46E5',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -1569,17 +1569,17 @@ const styles = StyleSheet.create({
     color: colors.textPrimary
   },
   rtTagBadge: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: colors.primarySubtle,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radius.xs,
     borderWidth: 1,
-    borderColor: '#C7D2FE'
+    borderColor: '#A7F3D0'
   },
   rtTagText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#4338CA'
+    color: colors.primary
   },
   wargaNama: {
     ...typography.cardTitle,

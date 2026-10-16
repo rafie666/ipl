@@ -10,7 +10,7 @@ import {
   Platform
 } from 'react-native'
 import { X } from 'lucide-react-native'
-import { colors, spacing, radius, shadows } from '../utils/theme'
+import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 import AppButton from './AppButton'
 
 export default function AppModal({
@@ -68,6 +68,8 @@ export default function AppModal({
                 style={styles.closeBtn}
                 onPress={onClose}
                 activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
                 accessibilityLabel="Tutup"
               >
                 <X size={18} color={colors.textSecondary} />
@@ -133,7 +135,7 @@ export default function AppModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    backgroundColor: colors.scrim || 'rgba(15, 23, 42, 0.48)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md
@@ -170,12 +172,16 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm
   },
   title: {
+    fontFamily: typography.h3.fontFamily,
     fontSize: 16,
+    lineHeight: 22,
     fontWeight: '700',
     color: colors.textPrimary
   },
   subtitle: {
+    fontFamily: typography.caption.fontFamily,
     fontSize: 12,
+    lineHeight: 16,
     color: colors.textSecondary,
     marginTop: 2
   },

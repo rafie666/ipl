@@ -1,9 +1,14 @@
+const NBSP = '\u00A0';
+
 /**
- * Format angka ke format mata uang Rupiah
+ * Format angka ke format mata uang Rupiah sesuai desain.md §1.3 (NBSP & tanda minus di depan)
  */
 export function formatRupiah(value) {
-  if (value === null || value === undefined || isNaN(value)) return 'Rp 0'
-  return 'Rp ' + Number(value).toLocaleString('id-ID')
+  if (value === null || value === undefined || isNaN(value)) return `Rp${NBSP}0`
+  const n = Math.trunc(Number(value) || 0)
+  const sign = n < 0 ? '-' : ''
+  const body = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${sign}Rp${NBSP}${body}`
 }
 
 /**
@@ -186,4 +191,136 @@ export function generateWaEvent(warga, event, tagihanEvent, infoLingkungan = 'Pe
     `Mohon bayar via: Tunai / Transfer${bankInfo} / QRIS%0ATerima kasih! 🙏`
 
   return `https://wa.me/${cleanPhone}?text=${text}`
+}
+
+/**
+ * Format label jabatan lengkap
+ */
+export function getJabatanLabel(jabatan) {
+  switch (String(jabatan || '').toLowerCase()) {
+    case 'admin':
+      return 'Super Administrator'
+    case 'rw':
+      return 'Ketua / Pengurus RW'
+    case 'rt':
+      return 'Ketua / Pengurus RT'
+    case 'bendahara':
+      return 'Bendahara Lingkungan'
+    case 'pengurus':
+      return 'Pengurus / Seksi Fasum'
+    case 'warga':
+    default:
+      return 'Warga'
+  }
+}
+
+/**
+ * Format label jabatan ringkas
+ */
+export function getJabatanShortLabel(jabatan) {
+  switch (String(jabatan || '').toLowerCase()) {
+    case 'admin':
+      return 'Admin'
+    case 'rw':
+      return 'Ketua RW'
+    case 'rt':
+      return 'Ketua RT'
+    case 'bendahara':
+      return 'Bendahara'
+    case 'pengurus':
+      return 'Pengurus'
+    case 'warga':
+    default:
+      return 'Warga'
+  }
+}
+
+/**
+ * Theme & badge styling untuk tiap jabatan
+ */
+export function getJabatanTheme(jabatan) {
+  switch (String(jabatan || '').toLowerCase()) {
+    case 'admin':
+      return {
+        bg: '#F8FAFC',
+        border: '#CBD5E1',
+        text: '#334155',
+        badgeBg: '#334155',
+        badgeText: '#FFFFFF',
+        iconColor: '#0F172A',
+        iconName: 'Shield'
+      }
+    case 'rw':
+      return {
+        bg: '#F0FDFA',
+        border: '#99F6E4',
+        text: '#0F766E',
+        badgeBg: '#0F766E',
+        badgeText: '#FFFFFF',
+        iconColor: '#0F766E',
+        iconName: 'Building2'
+      }
+    case 'rt':
+      return {
+        bg: '#ECFDF5',
+        border: '#A7F3D0',
+        text: '#059669',
+        badgeBg: '#059669',
+        badgeText: '#FFFFFF',
+        iconColor: '#059669',
+        iconName: 'Home'
+      }
+    case 'bendahara':
+      return {
+        bg: '#FFFBEB',
+        border: '#FDE68A',
+        text: '#D97706',
+        badgeBg: '#D97706',
+        badgeText: '#FFFFFF',
+        iconColor: '#D97706',
+        iconName: 'Wallet'
+      }
+    case 'pengurus':
+      return {
+        bg: '#EFF6FF',
+        border: '#BFDBFE',
+        text: '#2563EB',
+        badgeBg: '#2563EB',
+        badgeText: '#FFFFFF',
+        iconColor: '#2563EB',
+        iconName: 'ShieldCheck'
+      }
+    case 'warga':
+    default:
+      return {
+        bg: '#F8FAFC',
+        border: '#E2E8F0',
+        text: '#64748B',
+        badgeBg: '#64748B',
+        badgeText: '#FFFFFF',
+        iconColor: '#64748B',
+        iconName: 'User'
+      }
+  }
+}
+
+/**
+ * Format tanggal ISO ke waktu relatif (misal: "Baru saja", "10 mnt lalu", "Kemarin")
+ */
+export function formatTimeAgo(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
+  const now = new Date()
+  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffSec < 60) return 'Baru saja'
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `${diffMin} mnt lalu`
+  const diffHours = Math.floor(diffMin / 60)
+  if (diffHours < 24) return `${diffHours} jam lalu`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays === 1) return 'Kemarin'
+  if (diffDays < 7) return `${diffDays} hari lalu`
+  return `${date.getDate()} ${NAMA_BULAN[date.getMonth()]} ${date.getFullYear()}`
 }

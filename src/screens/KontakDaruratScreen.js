@@ -173,6 +173,9 @@ export default function KontakDaruratScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.iconBtn}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Salin nomor telepon ${title}`}
             onPress={() => handleCopy(phone, title)}
             activeOpacity={0.8}
           >
@@ -183,6 +186,9 @@ export default function KontakDaruratScreen({ navigation }) {
             <>
               <TouchableOpacity
                 style={styles.iconBtn}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit kontak ${title}`}
                 onPress={() => handleOpenEdit(item)}
                 activeOpacity={0.8}
               >
@@ -191,6 +197,9 @@ export default function KontakDaruratScreen({ navigation }) {
 
               <TouchableOpacity
                 style={[styles.iconBtn, { borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }]}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Hapus kontak ${title}`}
                 onPress={() => handleHapus(item)}
                 activeOpacity={0.8}
               >
@@ -237,6 +246,9 @@ export default function KontakDaruratScreen({ navigation }) {
       {isAdminLoggedIn && (
         <TouchableOpacity
           style={styles.fab}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel="Tambah Kontak Darurat"
           onPress={handleOpenAdd}
           activeOpacity={0.88}
         >
@@ -327,7 +339,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 170
   },
   card: {
     marginBottom: spacing.md
@@ -415,7 +427,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 104,
     width: 52,
     height: 52,
     borderRadius: 26,

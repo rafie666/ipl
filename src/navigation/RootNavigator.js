@@ -1,7 +1,13 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
+import { Platform } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import * as Notifications from 'expo-notifications'
+import {
+  handleNotificationClick,
+  setupAndroidNotificationChannels
+} from '../services/notificationService'
 import {
   LayoutDashboard,
   Home,
@@ -42,13 +48,63 @@ import EventsScreen from '../screens/EventsScreen'
 import KontakDaruratScreen from '../screens/KontakDaruratScreen'
 import PetaWargaScreen from '../screens/PetaWargaScreen'
 import DataAksesScreen from '../screens/DataAksesScreen'
+import JadwalSatpamScreen from '../screens/JadwalSatpamScreen'
 
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
 
 // Main Bottom Tab Navigator (5 Tabs per role, Index 2 is Floating Center Profile)
 function MainTabNavigator() {
-  const { isWarga, isRT, isAdmin } = useApp()
+  const { isWarga, isRT, isRW, isBendahara, isPengurus, isAdmin } = useApp()
+
+  // Tab 1 (Dashboard)
+  const tab1Label = isWarga
+    ? 'Beranda'
+    : isBendahara
+    ? 'Keuangan'
+    : isPengurus
+    ? 'Pengurus'
+    : isRW
+    ? 'RW 15'
+    : isRT
+    ? 'RT 01'
+    : 'Admin'
+
+  // Tab 2 (Tagihan for warga, Kas for bendahara, Data Warga for others)
+  const tab2Component = isWarga
+    ? TagihanScreen
+    : isBendahara
+    ? KasScreen
+    : WargaListScreen
+
+  const tab2Label = isWarga
+    ? 'Tagihan'
+    : isBendahara
+    ? 'Buku Kas'
+    : 'Warga'
+
+  const Tab2Icon = isWarga ? Receipt : isBendahara ? Wallet : Users
+
+  // Tab 4 (Layanan for warga & pengurus, Verifikasi Tagihan for bendahara, Kas for RT/RW/Admin)
+  const tab4Component = isWarga || isPengurus
+    ? LayananScreen
+    : isBendahara
+    ? TagihanScreen
+    : KasScreen
+
+  const tab4Label = isWarga
+    ? 'Layanan'
+    : isPengurus
+    ? 'Fasum'
+    : isBendahara
+    ? 'Verifikasi'
+    : isRW
+    ? 'Kas RW'
+    : isRT
+    ? 'Kas RT'
+    : 'Kas'
+
+  const Tab4Icon = (isWarga || isPengurus) ? Grid : isBendahara ? Receipt : Wallet
 
   return (
     <Tab.Navigator
@@ -62,20 +118,19 @@ function MainTabNavigator() {
         name="DashboardTab"
         component={DashboardScreen}
         options={{
-          tabBarLabel: isWarga ? 'Beranda' : 'Dashboard',
+          tabBarLabel: tab1Label,
           tabBarIcon: ({ color, size }) =>
             isWarga ? <Home size={size} color={color} /> : <LayoutDashboard size={size} color={color} />
         }}
       />
 
-      {/* 2. Tagihan (Warga) OR Warga/Data (RT/Admin) */}
+      {/* 2. Tagihan (Warga) OR Kas (Bendahara) OR Data Warga (Lainnya) */}
       <Tab.Screen
         name="TagihanTab"
-        component={isWarga ? TagihanScreen : WargaListScreen}
+        component={tab2Component}
         options={{
-          tabBarLabel: isWarga ? 'Pembayaran' : 'Data Warga',
-          tabBarIcon: ({ color, size }) =>
-            isWarga ? <Receipt size={size} color={color} /> : <Users size={size} color={color} />
+          tabBarLabel: tab2Label,
+          tabBarIcon: ({ color, size }) => <Tab2Icon size={size} color={color} />
         }}
       />
 
@@ -89,14 +144,13 @@ function MainTabNavigator() {
         }}
       />
 
-      {/* 4. Layanan (Warga) OR Kas (RT/Admin) */}
+      {/* 4. Layanan (Warga/Pengurus) OR Verifikasi (Bendahara) OR Kas (RT/RW/Admin) */}
       <Tab.Screen
         name="LayananTab"
-        component={isWarga ? LayananScreen : KasScreen}
+        component={tab4Component}
         options={{
-          tabBarLabel: isWarga ? 'Layanan' : 'Kas RT/RW',
-          tabBarIcon: ({ color, size }) =>
-            isWarga ? <Grid size={size} color={color} /> : <Wallet size={size} color={color} />
+          tabBarLabel: tab4Label,
+          tabBarIcon: ({ color, size }) => <Tab4Icon size={size} color={color} />
         }}
       />
 
@@ -115,9 +169,42 @@ function MainTabNavigator() {
 
 export default function RootNavigator() {
   const { currentUser, loading } = useApp()
+  const navigationRef = useRef(null)
+
+  useEffect(() => {
+    // Push notifications & channels are native mobile features (Android / iOS)
+    if (Platform.OS === 'web') return
+
+    // 1. Setup Android channels
+    setupAndroidNotificationChannels().catch(() => {})
+
+    // 2. Listener saat notifikasi diterima ketika aplikasi aktif (Foreground)
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+      console.log('[Notification Received Foreground]:', notification?.request?.content?.title)
+    })
+
+    // 3. Listener saat pengguna mengetuk notifikasi (Background / Killed / Foreground)
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationClick(response, navigationRef.current)
+    })
+
+    // 4. Periksa apakah app dibuka dari notifikasi awal (cold start)
+    Notifications.getLastNotificationResponseAsync?.()
+      ?.then((initialResponse) => {
+        if (initialResponse) {
+          handleNotificationClick(initialResponse, navigationRef.current)
+        }
+      })
+      ?.catch(() => {})
+
+    return () => {
+      receivedSub?.remove?.()
+      responseSub?.remove?.()
+    }
+  }, [])
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -137,6 +224,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Surat" component={SuratScreen} />
         <Stack.Screen name="Events" component={EventsScreen} />
         <Stack.Screen name="KontakDarurat" component={KontakDaruratScreen} />
+        <Stack.Screen name="JadwalSatpam" component={JadwalSatpamScreen} />
         <Stack.Screen name="PetaWarga" component={PetaWargaScreen} />
         <Stack.Screen name="DataAkses" component={DataAksesScreen} />
         <Stack.Screen name="Kas" component={KasScreen} />

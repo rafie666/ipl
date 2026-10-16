@@ -11,7 +11,8 @@ import {
   Alert,
   Linking,
   ScrollView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native'
 import {
   Receipt,
@@ -44,7 +45,8 @@ import {
   Edit3,
   Sliders,
   DollarSign,
-  CheckCircle
+  CheckCircle,
+  Zap
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import TopAppBar from '../components/TopAppBar'
@@ -52,6 +54,9 @@ import AppCard from '../components/AppCard'
 import AppBadge from '../components/AppBadge'
 import AppButton from '../components/AppButton'
 import AppModal from '../components/AppModal'
+import ReceiptModal from '../components/ReceiptModal'
+import AppEmptyState from '../components/AppEmptyState'
+import { fetchMootaMutations } from '../services/mootaService'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 import {
   generateWaReminder,
@@ -88,7 +93,8 @@ export default function TagihanScreen({ navigation }) {
     addJenisIuran,
     updateJenisIuran,
     deleteJenisIuran,
-    toggleJenisIuran
+    toggleJenisIuran,
+    bayarTagihanOtomatisMoota
   } = useApp()
 
   const currentMonth = new Date().getMonth() + 1
@@ -105,6 +111,52 @@ export default function TagihanScreen({ navigation }) {
   const [filterBulan, setFilterBulan] = useState(0) // 0 = semua bulan
   const [filterTahun, setFilterTahun] = useState(currentYear)
   const [showPeriodFilter, setShowPeriodFilter] = useState(false)
+  const [mootaSyncing, setMootaSyncing] = useState(false)
+
+  const handleSyncMutasiMoota = async () => {
+    setMootaSyncing(true)
+    try {
+      const res = await fetchMootaMutations('CR', 50)
+      if (res.success) {
+        const mutations = res.data || []
+        let autoSettled = 0
+        const pendingTagihan = (scopedTagihan || []).filter((t) => t.status !== 'Lunas')
+
+        for (const m of mutations) {
+          const mutAmount = Math.round(Number(m.amount || m.nominal || 0))
+          if (mutAmount <= 0) continue
+
+          for (const t of pendingTagihan) {
+            const tWarga = warga.find((w) => w.id === t.wargaId) || {}
+            const exactNom = calculateTotalWithKodeUnik(t.total, tWarga)
+            if (exactNom === mutAmount && t.status !== 'Lunas') {
+              await bayarTagihanOtomatisMoota(t.id, m)
+              t.status = 'Lunas'
+              autoSettled++
+            }
+          }
+        }
+
+        if (autoSettled > 0) {
+          Alert.alert(
+            '🎉 Pelunasan Otomatis!',
+            `${autoSettled} tagihan warga berhasil diverifikasi dan dilunasi otomatis dari mutasi transfer Moota Sandbox!`
+          )
+        } else {
+          Alert.alert(
+            'Mutasi Moota Terbaca',
+            `Berhasil memeriksa ${mutations.length} mutasi di Moota Sandbox. Belum ada tagihan baru yang cocok atau semua tagihan sudah lunas.`
+          )
+        }
+      } else {
+        Alert.alert('Info Moota', res.message || 'Gagal membaca mutasi dari Moota.')
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Gagal sinkronisasi mutasi.')
+    } finally {
+      setMootaSyncing(false)
+    }
+  }
 
   // Selection Mode State (RT / RW Admin)
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -173,9 +225,13 @@ export default function TagihanScreen({ navigation }) {
 
   // Filter bills
   const filteredBills = scopedTagihan.filter((t) => {
-    // Scope Filter
+    // Scope Filter (dari segmen tabs)
     if (scopeFilter === 'RT' && t.payment_scope === 'RW') return false
     if (scopeFilter === 'RW' && t.payment_scope !== 'RW') return false
+
+    // Filter dari filter chip yang ada (Semua, Tagihan RT, Tagihan RW, dll)
+    if (activeFilter === 'Tagihan RT' && t.payment_scope === 'RW') return false
+    if (activeFilter === 'Tagihan RW' && t.payment_scope !== 'RW') return false
 
     // Status Filter
     const isUnpaid = t.status === 'Belum Lunas' || t.status === 'Belum Bayar'
@@ -544,9 +600,11 @@ export default function TagihanScreen({ navigation }) {
     const targetScope = isRT ? 'RT' : manScope
     const isRw = targetScope === 'RW'
     const targetWarga = warga.find((w) => w.id === selectedWargaId) || {}
-    const ownerId = isRw ? (config?.rw || 'rw-15') : (targetWarga.rt_id || currentUser?.rt_id || 'rt-1')
-    const rtObj = rts?.find((r) => r.id === ownerId) || {}
-    const ownerLabel = isRw ? (config?.rw || 'RW 15') : (rtObj.name || 'RT 01')
+    const residentRtId = targetWarga.rt_id || currentUser?.rt_id || 'rt-01-01'
+    const rtObj = rts?.find((r) => r.id === residentRtId || r.number === targetWarga.rt) || {}
+    const rwClean = (rtObj.rw && !rtObj.rw.includes('-')) ? rtObj.rw : (config?.rw && !config.rw.includes('-') ? config.rw : 'RW 01')
+    const ownerId = isRw ? (targetWarga.rw_id || rtObj.rw_id || 'rw-01') : residentRtId
+    const ownerLabel = isRw ? rwClean : (rtObj.name || 'RT 01')
 
     try {
       await addTagihanManual({
@@ -629,7 +687,9 @@ export default function TagihanScreen({ navigation }) {
     const noRumah = targetWarga.noRumah || item.noRumah || '-'
     const bulanNama = NAMA_BULAN[(item.bulan || 1) - 1] || `Bln ${item.bulan}`
     const isRw = item.payment_scope === 'RW'
-    const recipientLabel = item.pembayaran_kepada || (isRw ? 'RW 15' : 'RT 01')
+    const recipientLabel = item.pembayaran_kepada && !item.pembayaran_kepada.includes('-')
+      ? item.pembayaran_kepada
+      : (isRw ? 'RW 01' : 'RT 01')
 
     return (
       <TouchableOpacity
@@ -828,53 +888,60 @@ export default function TagihanScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <TopAppBar title="Tagihan & Iuran" navigation={navigation} />
+      <TopAppBar
+        title="Tagihan & Iuran"
+        navigation={navigation}
+        showBack={Boolean(isAdminLoggedIn)}
+      />
 
       <View style={styles.filterSection}>
-        {/* Scope Segment Tabs: Semua | Tagihan RT | Tagihan RW (atau Banner Khusus RT) */}
-        {!isRT ? (
-          <View style={styles.scopeSegmentRow}>
-            <TouchableOpacity
-              style={[styles.scopeSegBtn, scopeFilter === 'ALL' && styles.scopeSegBtnActive]}
-              onPress={() => setScopeFilter('ALL')}
-            >
-              <Text style={[styles.scopeSegText, scopeFilter === 'ALL' && styles.scopeSegTextActive]}>
-                Semua Tagihan
-              </Text>
-            </TouchableOpacity>
+        {/* Scope Segment Tabs: Semua | Tagihan RT | Tagihan RW (Tersedia untuk RW dan RT) */}
+        <View style={styles.scopeSegmentRow}>
+          <TouchableOpacity
+            style={[styles.scopeSegBtn, scopeFilter === 'ALL' && styles.scopeSegBtnActive]}
+            onPress={() => setScopeFilter('ALL')}
+          >
+            <Text style={[styles.scopeSegText, scopeFilter === 'ALL' && styles.scopeSegTextActive]}>
+              Semua Tagihan
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.scopeSegBtn, scopeFilter === 'RT' && styles.scopeSegBtnActive]}
-              onPress={() => setScopeFilter('RT')}
-            >
-              <Text style={[styles.scopeSegText, scopeFilter === 'RT' && styles.scopeSegTextActive]}>
-                Tagihan RT
-              </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.scopeSegBtn, scopeFilter === 'RT' && styles.scopeSegBtnActive]}
+            onPress={() => setScopeFilter('RT')}
+          >
+            <Text style={[styles.scopeSegText, scopeFilter === 'RT' && styles.scopeSegTextActive]}>
+              Tagihan RT
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.scopeSegBtn, scopeFilter === 'RW' && styles.scopeSegBtnActive]}
-              onPress={() => setScopeFilter('RW')}
-            >
-              <Text style={[styles.scopeSegText, scopeFilter === 'RW' && styles.scopeSegTextActive]}>
-                Tagihan RW
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={[styles.scopeSegmentRow, { justifyContent: 'space-between', paddingHorizontal: 12, alignItems: 'center' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Home size={15} color={colors.primary} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
-                Kelola Tagihan Wilayah {rtLabel}
-              </Text>
-            </View>
-            <View style={[styles.scopeSmallBadge, styles.badgeRt]}>
-              <Text style={[styles.scopeSmallBadgeText, styles.textRt]}>
-                Khusus Warga {rtLabel}
-              </Text>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={[styles.scopeSegBtn, scopeFilter === 'RW' && styles.scopeSegBtnActive]}
+            onPress={() => setScopeFilter('RW')}
+          >
+            <Text style={[styles.scopeSegText, scopeFilter === 'RW' && styles.scopeSegTextActive]}>
+              Tagihan RW
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Sync Mutasi Moota Sandbox */}
+        {Boolean(isAdminLoggedIn) && (
+          <TouchableOpacity
+            style={styles.mootaQuickSyncBtn}
+            onPress={handleSyncMutasiMoota}
+            disabled={mootaSyncing}
+            activeOpacity={0.85}
+          >
+            {mootaSyncing ? (
+              <ActivityIndicator size="small" color="#D97706" style={{ marginRight: 6 }} />
+            ) : (
+              <Zap size={14} color="#D97706" style={{ marginRight: 6 }} />
+            )}
+            <Text style={styles.mootaQuickSyncText}>
+              {mootaSyncing ? 'Memeriksa Mutasi Moota...' : '⚡ Tarik Mutasi Moota (Cek Pelunasan Otomatis)'}
+            </Text>
+          </TouchableOpacity>
         )}
 
         {/* Selection Bar / Toolbar Toggle for RT/RW */}
@@ -983,9 +1050,9 @@ export default function TagihanScreen({ navigation }) {
           ) : null}
         </View>
 
-        {/* Status Filter Chips */}
+        {/* Filter Chips: Termasuk pilihan jenis tagihan RT & RW */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 4 }}>
-          {['Semua', 'Belum Bayar', 'Menunggu', 'Perlu Diperbaiki', 'Lunas'].map((tab) => (
+          {['Semua', 'Tagihan RT', 'Tagihan RW', 'Belum Bayar', 'Menunggu', 'Perlu Diperbaiki', 'Lunas'].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.filterChip, activeFilter === tab && styles.filterChipActive]}
@@ -1007,7 +1074,7 @@ export default function TagihanScreen({ navigation }) {
         data={filteredBills}
         keyExtractor={(item) => item.id || `tag-${item.wargaId}-${item.bulan}-${item.tahun}-${item.payment_scope || 'RT'}`}
         renderItem={renderTagihanItem}
-        contentContainerStyle={[styles.listContent, isSelectionMode && { paddingBottom: 160 }]}
+        contentContainerStyle={[styles.listContent, isSelectionMode && { paddingBottom: 220 }]}
         showsVerticalScrollIndicator={false}
         initialNumToRender={8}
         maxToRenderPerBatch={10}
@@ -1022,13 +1089,11 @@ export default function TagihanScreen({ navigation }) {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Receipt size={44} color={colors.textSecondary} style={{ marginBottom: 10 }} />
-            <Text style={styles.emptyTitle}>Tidak ada data tagihan</Text>
-            <Text style={styles.emptySub}>
-              Coba ubah kata kunci atau filter status di atas.
-            </Text>
-          </View>
+          <AppEmptyState
+            variant={searchQuery ? 'no_search' : (activeFilter === 'Lunas' ? 'all_paid' : 'no_history')}
+            title={searchQuery ? 'Tagihan Tidak Ditemukan' : 'Tidak Ada Tagihan'}
+            subtitle={searchQuery ? 'Coba ubah kata kunci pencarian.' : 'Belum ada data tagihan pada filter ini.'}
+          />
         }
       />
 
@@ -1097,9 +1162,8 @@ export default function TagihanScreen({ navigation }) {
       >
         <View style={styles.roleContextBanner}>
           <View style={styles.roleContextBadge}>
-            <ShieldCheck size={14} color={isRW ? '#7C3AED' : '#2563EB'} />
-            <Text style={[styles.roleContextBadgeText, { color: isRW ? '#7C3AED' : '#2563EB' }]}>
-
+            <ShieldCheck size={14} color={isRW ? colors.primary : '#2563EB'} />
+            <Text style={[styles.roleContextBadgeText, { color: isRW ? colors.primary : '#2563EB' }]}>
               {isRW ? 'Pengurus RW 15' : `Pengurus ${rtLabel}`}
             </Text>
           </View>
@@ -1112,14 +1176,14 @@ export default function TagihanScreen({ navigation }) {
 
         {/* Option 1: Tagihan dari Master Pos Iuran */}
         <TouchableOpacity
-          style={[styles.actionOptionBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECDD3' }]}
+          style={[styles.actionOptionBtn, { backgroundColor: colors.primarySubtle, borderColor: '#A7F3D0' }]}
           onPress={() => {
             setActionMenuOpen(false)
             setModalGenOpen(true)
           }}
           activeOpacity={0.88}
         >
-          <View style={[styles.actionOptionIconWrap, { backgroundColor: '#FECACA' }]}>
+          <View style={[styles.actionOptionIconWrap, { backgroundColor: '#DCFCE7' }]}>
             <Receipt size={22} color={colors.primary} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -1232,7 +1296,7 @@ export default function TagihanScreen({ navigation }) {
         {/* Banner Penjelasan Alur */}
         <View style={styles.modalStepBanner}>
           <View style={styles.modalStepHeader}>
-            <Building2 size={16} color={isRW ? '#7C3AED' : '#2563EB'} />
+            <Building2 size={16} color={isRW ? colors.primary : '#2563EB'} />
             <Text style={styles.modalStepTitle}>
               {isRW ? 'Penerbitan Tagihan Tingkat RW / RT' : `Penerbitan Tagihan Wilayah ${rtLabel}`}
             </Text>
@@ -1257,8 +1321,8 @@ export default function TagihanScreen({ navigation }) {
                 }}
                 activeOpacity={0.85}
               >
-                <ShieldCheck size={18} color={genScope === 'RW' ? '#7C3AED' : colors.textSecondary} />
-                <Text style={[styles.scopeSelectTitle, genScope === 'RW' && { color: '#7C3AED' }]}>Tagihan RW</Text>
+                <ShieldCheck size={18} color={genScope === 'RW' ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.scopeSelectTitle, genScope === 'RW' && { color: colors.primary }]}>Tagihan RW</Text>
                 <Text style={styles.scopeSelectSub}>Iuran Fasum/Pembangunan (Kas RW 15)</Text>
               </TouchableOpacity>
 
@@ -2365,6 +2429,13 @@ export default function TagihanScreen({ navigation }) {
           })}
         </View>
       </AppModal>
+
+      {/* Kwitansi Resmi / Digital */}
+      <ReceiptModal
+        visible={!!kwitansiModal}
+        onClose={() => setKwitansiModal(null)}
+        tagihan={kwitansiModal}
+      />
     </View>
   )
 }
@@ -2474,7 +2545,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   filterChipActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primary
   },
   filterChipText: {
@@ -2488,7 +2559,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 190
   },
   card: {
     marginBottom: spacing.md
@@ -2556,7 +2627,7 @@ const styles = StyleSheet.create({
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginTop: spacing.xs
   },
   iconActionBtn: {
@@ -2585,7 +2656,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 104,
     width: 52,
     height: 52,
     borderRadius: 26,
@@ -3211,6 +3282,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E7FF',
     backgroundColor: '#EEF2FF'
+  },
+  mootaQuickSyncBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: radius.md,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    ...shadows.sm
+  },
+  mootaQuickSyncText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#92400E'
   }
 })
 

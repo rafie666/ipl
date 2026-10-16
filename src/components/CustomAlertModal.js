@@ -283,7 +283,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.xl,
-    zIndex: 99999
+    zIndex: 999999,
+    elevation: 999999
   },
   card: {
     width: Math.min(SCREEN_WIDTH - 40, 390),

@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native'
 import {
   Users,
@@ -15,18 +16,50 @@ import {
   Plus,
   Phone,
   Home,
-  X
+  X,
+  UserCheck,
+  Shield,
+  Check
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import TopAppBar from '../components/TopAppBar'
 import AppCard from '../components/AppCard'
 import AppBadge from '../components/AppBadge'
+import AppModal from '../components/AppModal'
+import AppButton from '../components/AppButton'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
+import { getJabatanLabel, getJabatanShortLabel, getJabatanTheme } from '../utils/formatters'
 
 export default function WargaListScreen({ navigation }) {
-  const { scopedWarga, isAdminLoggedIn, refreshData, refreshing, tagihan } = useApp()
+  const { scopedWarga, isAdminLoggedIn, isAdmin, updateWarga, refreshData, refreshing, tagihan } = useApp()
   const [search, setSearch] = useState('')
   const [selectedBlok, setSelectedBlok] = useState('Semua')
+
+  // Modal Ubah Role Warga (Khusus Admin IT)
+  const [roleModalVisible, setRoleModalVisible] = useState(false)
+  const [targetWarga, setTargetWarga] = useState(null)
+  const [selectedRole, setSelectedRole] = useState('warga')
+  const [savingRole, setSavingRole] = useState(false)
+
+  const handleOpenRoleModal = (w) => {
+    setTargetWarga(w)
+    setSelectedRole(w.jabatan || 'warga')
+    setRoleModalVisible(true)
+  }
+
+  const handleSaveRole = async () => {
+    if (!targetWarga) return
+    setSavingRole(true)
+    try {
+      await updateWarga(targetWarga.id, { jabatan: selectedRole, role: selectedRole })
+      setRoleModalVisible(false)
+      Alert.alert('Sukses', `Role ${targetWarga.nama} berhasil diubah menjadi ${getJabatanShortLabel(selectedRole)}.`)
+    } catch (e) {
+      Alert.alert('Error', 'Gagal memperbarui role warga.')
+    } finally {
+      setSavingRole(false)
+    }
+  }
 
   const currentMonth = new Date().getMonth() + 1
   const currentYear = new Date().getFullYear()
@@ -88,7 +121,29 @@ export default function WargaListScreen({ navigation }) {
             </Text>
           </View>
           <View style={styles.infoCol}>
-            <Text style={styles.wargaNama} numberOfLines={1}>{item.nama}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.wargaNama} numberOfLines={1}>{item.nama}</Text>
+              {item.jabatan && item.jabatan !== 'warga' ? (
+                <View
+                  style={[
+                    styles.jabatanChip,
+                    {
+                      backgroundColor: getJabatanTheme(item.jabatan).bg,
+                      borderColor: getJabatanTheme(item.jabatan).border
+                    }
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.jabatanChipText,
+                      { color: getJabatanTheme(item.jabatan).text }
+                    ]}
+                  >
+                    {getJabatanShortLabel(item.jabatan)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.addressRow}>
               <Home size={12} color={colors.textSecondary} />
               <Text style={styles.wargaAlamat} numberOfLines={1}>
@@ -126,6 +181,20 @@ export default function WargaListScreen({ navigation }) {
               {item.statusHuni || 'Tetap'}
             </Text>
           </View>
+
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.ubahRoleBtn}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Ubah role ${item.nama}`}
+              onPress={() => handleOpenRoleModal(item)}
+              activeOpacity={0.75}
+            >
+              <UserCheck size={11} color="#4F46E5" style={{ marginRight: 3 }} />
+              <Text style={styles.ubahRoleBtnText}>Ubah Role</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </AppCard>
     )
@@ -216,12 +285,76 @@ export default function WargaListScreen({ navigation }) {
       {isAdminLoggedIn && (
         <TouchableOpacity
           style={styles.fab}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel="Tambah Data Warga Baru"
           onPress={() => navigation.navigate('Register')}
           activeOpacity={0.88}
         >
           <Plus size={24} color={colors.surface} />
         </TouchableOpacity>
       )}
+
+      {/* Modal Ubah Role Warga (Khusus Admin IT) */}
+      <AppModal
+        visible={roleModalVisible}
+        title="Ubah Role & Jabatan Warga"
+        subtitle={targetWarga ? `Pilih peran baru untuk ${targetWarga.nama}` : ''}
+        onClose={() => setRoleModalVisible(false)}
+        footer={
+          <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+            <View style={{ flex: 1 }}>
+              <AppButton
+                title="Batal"
+                variant="secondary"
+                onPress={() => setRoleModalVisible(false)}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppButton
+                title="Simpan Role"
+                variant="primary"
+                loading={savingRole}
+                onPress={handleSaveRole}
+              />
+            </View>
+          </View>
+        }
+      >
+        <View style={{ gap: 8 }}>
+          {[
+            { key: 'warga', label: 'Warga Biasa', desc: 'Warga perumahan tanpa jabatan struktural' },
+            { key: 'rt', label: 'Ketua RT', desc: 'Mengelola warga, iuran dan kas RT' },
+            { key: 'rw', label: 'Ketua RW', desc: 'Mengoordinasi wilayah lingkungan RW' },
+            { key: 'bendahara', label: 'Bendahara', desc: 'Mengelola pembukuan keuangan & kas' },
+            { key: 'pengurus', label: 'Pengurus Fasum', desc: 'Mengelola fasilitas umum, aduan & surat' },
+            { key: 'admin', label: 'Admin IT', desc: 'Super Administrator sistem & database' }
+          ].map((item) => {
+            const isSel = selectedRole === item.key
+            const theme = getJabatanTheme(item.key)
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={[
+                  styles.roleModalOption,
+                  isSel && { borderColor: theme.border, backgroundColor: theme.bg }
+                ]}
+                onPress={() => setSelectedRole(item.key)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.roleModalIcon, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                  <Shield size={16} color={theme.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.roleModalTitle, isSel && { color: theme.color }]}>{item.label}</Text>
+                  <Text style={styles.roleModalDesc}>{item.desc}</Text>
+                </View>
+                {isSel && <Check size={18} color={theme.color} />}
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      </AppModal>
     </View>
   )
 }
@@ -265,7 +398,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   filterChipActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primary
   },
   filterChipText: {
@@ -290,7 +423,7 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
     paddingTop: 6,
-    paddingBottom: 110
+    paddingBottom: 170
   },
   card: {
     flexDirection: 'row',
@@ -310,7 +443,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.primarySubtle,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm
@@ -351,6 +484,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 4
   },
+  jabatanChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: radius.sm,
+    borderWidth: 1
+  },
+  jabatanChipText: {
+    fontSize: 9.5,
+    fontWeight: '800'
+  },
   statusHuniBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -389,7 +532,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 104,
     width: 52,
     height: 52,
     borderRadius: 26,
@@ -397,5 +540,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.card
+  },
+  ubahRoleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primarySubtle,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    marginTop: 3
+  },
+  ubahRoleBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary
+  },
+  roleModalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    backgroundColor: '#FFFFFF'
+  },
+  roleModalIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1
+  },
+  roleModalTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  roleModalDesc: {
+    fontSize: 11,
+    color: colors.textSecondary
   }
 })

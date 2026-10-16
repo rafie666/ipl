@@ -307,36 +307,18 @@ export default function RegisterScreen({ route, navigation }) {
               </View>
             </View>
 
-            {/* Kode Unik & Nama KK */}
-            <View style={styles.rowTwo}>
-              <View style={{ width: 110 }}>
-                <Text style={styles.label}>Kode Unik *</Text>
-                <View style={styles.inputWithIcon}>
-                  <Hash size={14} color={colors.primary} style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.inputInner, styles.inputCode]}
-                    placeholder="WR101"
-                    placeholderTextColor={colors.textSecondary}
-                    maxLength={6}
-                    autoCapitalize="characters"
-                    value={kodeUnik}
-                    onChangeText={(val) => setKodeUnik(val.toUpperCase())}
-                  />
-                </View>
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Nama Kepala Keluarga *</Text>
-                <View style={styles.inputWithIcon}>
-                  <User size={15} color={colors.textSecondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.inputInner}
-                    placeholder="Nama Lengkap Sesuai KTP"
-                    placeholderTextColor={colors.textSecondary}
-                    value={nama}
-                    onChangeText={handleNamaChange}
-                  />
-                </View>
+            {/* Nama Kepala Keluarga (Full Width) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nama Kepala Keluarga *</Text>
+              <View style={styles.inputWithIcon}>
+                <User size={15} color={colors.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.inputInner}
+                  placeholder="Nama Lengkap Sesuai KTP"
+                  placeholderTextColor={colors.textSecondary}
+                  value={nama}
+                  onChangeText={handleNamaChange}
+                />
               </View>
             </View>
 
@@ -426,6 +408,32 @@ export default function RegisterScreen({ route, navigation }) {
                   />
                 </View>
               </View>
+            </View>
+
+            {/* Kode Unik Warga (Auto-Generated) */}
+            <View style={styles.inputGroup}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={styles.label}>Kode Unik Warga *</Text>
+                <View style={styles.autoBadge}>
+                  <Sparkles size={11} color={colors.primary} />
+                  <Text style={styles.autoBadgeText}>Dibuat Otomatis</Text>
+                </View>
+              </View>
+              <View style={styles.inputWithIcon}>
+                <Hash size={15} color={colors.primary} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.inputInner, styles.inputCode]}
+                  placeholder="WR101"
+                  placeholderTextColor={colors.textSecondary}
+                  maxLength={6}
+                  autoCapitalize="characters"
+                  value={kodeUnik}
+                  onChangeText={(val) => setKodeUnik(val.toUpperCase())}
+                />
+              </View>
+              <Text style={styles.fieldHint}>
+                Kode pengenal unik (contoh: 101) yang otomatis ditambahkan ke nominal transfer iuran IPL untuk verifikasi instan.
+              </Text>
             </View>
 
             {/* Status Hunian - Segmented */}
@@ -600,7 +608,7 @@ export default function RegisterScreen({ route, navigation }) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Status Pernikahan</Text>
               <View style={styles.segmentedRow}>
-                {['Kawin', 'Belum Kawin', 'Cerai'].map((sp) => {
+                {['sudah menikah', 'belum menikah', 'cerai'].map((sp) => {
                   const isSelected = statusPernikahan === sp
                   return (
                     <TouchableOpacity
@@ -937,7 +945,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radius.md,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.primarySubtle,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -987,7 +995,29 @@ const styles = StyleSheet.create({
   inputCode: {
     fontWeight: '800',
     color: colors.primary,
-    textAlign: 'center'
+    letterSpacing: 0.5
+  },
+  autoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primarySubtle,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: '#A7F3D0'
+  },
+  autoBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 5,
+    lineHeight: 16
   },
   textArea: {
     borderWidth: 1,
@@ -1014,7 +1044,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   rtChipActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primary
   },
   rtDot: {
@@ -1053,7 +1083,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4
   },
   segmentedBtnActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderColor: colors.primary
   },
   segmentedText: {
@@ -1080,7 +1110,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border
   },
   gridPillActive: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#ECFDF5',
     borderColor: colors.primary
   },
   gridPillText: {

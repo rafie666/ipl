@@ -30,6 +30,7 @@ import AppBadge from '../components/AppBadge'
 import AppButton from '../components/AppButton'
 import AppModal from '../components/AppModal'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
+import { getJabatanLabel, getJabatanShortLabel, getJabatanTheme } from '../utils/formatters'
 
 export default function DataAksesScreen({ navigation }) {
   const {
@@ -52,7 +53,7 @@ export default function DataAksesScreen({ navigation }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [phone, setPhone] = useState('')
-  const [role, setRole] = useState('admin')
+  const [role, setRole] = useState('bendahara')
   const [selectedRtId, setSelectedRtId] = useState('rt-1')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -99,6 +100,7 @@ export default function DataAksesScreen({ navigation }) {
           password: password.trim() ? password.trim() : undefined,
           phone: phone.trim(),
           role,
+          jabatan: role,
           rt_id: role === 'rt' ? selectedRtId : null
         })
         if (res.success) {
@@ -113,6 +115,7 @@ export default function DataAksesScreen({ navigation }) {
           password: password.trim(),
           phone: phone.trim(),
           role,
+          jabatan: role,
           rt_id: role === 'rt' ? selectedRtId : null
         })
         if (res.success) {
@@ -153,20 +156,22 @@ export default function DataAksesScreen({ navigation }) {
   }
 
   const filteredUsers = users.filter((u) => {
-    if (filterRole !== 'ALL' && u.role !== filterRole) return false
+    if (filterRole !== 'ALL' && u.role !== filterRole && u.jabatan !== filterRole) return false
     if (search.trim()) {
       const q = search.toLowerCase()
       const matchU = (u.username || '').toLowerCase().includes(q)
       const matchN = (u.name || '').toLowerCase().includes(q)
       const matchR = (u.role || '').toLowerCase().includes(q)
-      return matchU || matchN || matchR
+      const matchJ = (u.jabatan || '').toLowerCase().includes(q)
+      return matchU || matchN || matchR || matchJ
     }
     return true
   })
 
   const renderItem = ({ item }) => {
-    const isSuperAdmin = item.role === 'admin'
-    const isKetuaRt = item.role === 'rt'
+    const roleKey = item.role || item.jabatan || 'warga'
+    const theme = getJabatanTheme(roleKey)
+    const label = getJabatanLabel(roleKey)
     const targetRt = rts.find((r) => r.id === item.rt_id)
 
     return (
@@ -175,31 +180,28 @@ export default function DataAksesScreen({ navigation }) {
           <View
             style={[
               styles.avatarWrap,
-              isSuperAdmin
-                ? { backgroundColor: '#FEF2F2' }
-                : isKetuaRt
-                ? { backgroundColor: '#EFF6FF' }
-                : { backgroundColor: '#ECFDF5' }
+              { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1 }
             ]}
           >
-            {isSuperAdmin ? (
-              <Shield size={20} color={colors.primary} />
+            {roleKey === 'admin' ? (
+              <Shield size={20} color={theme.color} />
             ) : (
-              <User size={20} color={isKetuaRt ? colors.info : colors.success} />
+              <User size={20} color={theme.color} />
             )}
           </View>
 
           <View style={styles.infoCol}>
             <View style={styles.rowTop}>
               <Text style={styles.usernameText} numberOfLines={1}>@{item.username}</Text>
-              <AppBadge
-                scope={isSuperAdmin ? 'RW' : isKetuaRt ? 'RT' : 'ALL'}
-                label={isSuperAdmin ? 'Super Admin RW' : isKetuaRt ? (targetRt?.name || 'Ketua RT') : 'Warga'}
-              />
+              <View style={[styles.jabatanPill, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                <Text style={[styles.jabatanPillText, { color: theme.color }]}>
+                  {roleKey === 'rt' ? (targetRt?.name || 'RT 01') : label}
+                </Text>
+              </View>
             </View>
 
             <Text style={styles.nameText} numberOfLines={1}>
-              {item.name || (isSuperAdmin ? 'Pengurus RW' : isKetuaRt ? 'Pengurus RT' : 'Warga')}
+              {item.name || label}
             </Text>
 
             {item.phone ? (
@@ -238,7 +240,7 @@ export default function DataAksesScreen({ navigation }) {
     <View style={styles.container}>
       <AppHeader
         title="Data Akses & Keamanan"
-        subtitle="Manajemen akun Super Admin, Pengurus RT, dan Warga"
+        subtitle="Manajemen akun Super Admin, Ketua RT/RW, Bendahara & Pengurus"
         onBack={() => navigation.goBack()}
       />
 
@@ -260,11 +262,14 @@ export default function DataAksesScreen({ navigation }) {
           )}
         </View>
 
-        <View style={styles.filterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           {[
             { key: 'ALL', label: 'Semua' },
-            { key: 'admin', label: 'Admin RW' },
-            { key: 'rt', label: 'Pengurus RT' },
+            { key: 'admin', label: 'Admin IT' },
+            { key: 'rw', label: 'Ketua RW' },
+            { key: 'rt', label: 'Ketua RT' },
+            { key: 'bendahara', label: 'Bendahara' },
+            { key: 'pengurus', label: 'Pengurus' },
             { key: 'warga', label: 'Warga' }
           ].map((f) => (
             <TouchableOpacity
@@ -277,7 +282,7 @@ export default function DataAksesScreen({ navigation }) {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       <FlatList
@@ -331,21 +336,26 @@ export default function DataAksesScreen({ navigation }) {
         }
       >
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Tipe Peran (Role)</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity
-              style={[styles.roleBtn, role === 'admin' && styles.roleBtnActive]}
-              onPress={() => setRole('admin')}
-            >
-              <Text style={[styles.roleBtnText, role === 'admin' && styles.roleBtnTextActive]}>Super Admin RW</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleBtn, role === 'rt' && styles.roleBtnActive]}
-              onPress={() => setRole('rt')}
-            >
-              <Text style={[styles.roleBtnText, role === 'rt' && styles.roleBtnTextActive]}>Ketua / RT</Text>
-            </TouchableOpacity>
+          <Text style={styles.label}>Tipe Peran (Role / Jabatan)</Text>
+          <View style={styles.roleGrid}>
+            {[
+              { id: 'admin', label: 'Admin IT' },
+              { id: 'rw', label: 'Ketua RW' },
+              { id: 'rt', label: 'Ketua RT' },
+              { id: 'bendahara', label: 'Bendahara' },
+              { id: 'pengurus', label: 'Pengurus' },
+              { id: 'warga', label: 'Warga' }
+            ].map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.roleGridBtn, role === r.id && styles.roleGridBtnActive]}
+                onPress={() => setRole(r.id)}
+              >
+                <Text style={[styles.roleGridBtnText, role === r.id && styles.roleGridBtnTextActive]}>
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -470,7 +480,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: 110
+    paddingBottom: 150
   },
   card: {
     flexDirection: 'row',
@@ -539,7 +549,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 104,
     width: 52,
     height: 52,
     borderRadius: 26,
@@ -602,6 +612,46 @@ const styles = StyleSheet.create({
   },
   roleBtnTextActive: {
     color: colors.primary,
+    fontWeight: '700'
+  },
+  roleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4
+  },
+  roleGridBtn: {
+    width: '31%',
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4
+  },
+  roleGridBtnActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary
+  },
+  roleGridBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary
+  },
+  roleGridBtnTextActive: {
+    color: colors.primary,
+    fontWeight: '700'
+  },
+  jabatanPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    borderWidth: 1
+  },
+  jabatanPillText: {
+    fontSize: 11,
     fontWeight: '700'
   }
 })

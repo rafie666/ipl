@@ -8,12 +8,26 @@ export default function AppHeader({
   title,
   subtitle,
   onBack,
+  navigation,
+  showBack = true,
   rightAction,
   variant = 'primary', // 'primary' (red) | 'surface' (white)
   style
 }) {
   const insets = useSafeAreaInsets()
   const isPrimary = variant === 'primary'
+
+  const handleBack = () => {
+    if (typeof onBack === 'function') {
+      onBack()
+    } else if (navigation?.canGoBack && navigation.canGoBack()) {
+      navigation.goBack()
+    } else if (navigation) {
+      navigation.navigate('Main', { screen: 'DashboardTab' })
+    }
+  }
+
+  const hasBackAction = showBack && (typeof onBack === 'function' || navigation)
 
   return (
     <View
@@ -29,11 +43,13 @@ export default function AppHeader({
         backgroundColor={isPrimary ? colors.primary : colors.surface}
       />
       <View style={styles.contentRow}>
-        {onBack ? (
+        {hasBackAction ? (
           <TouchableOpacity
             style={[styles.backBtn, isPrimary ? styles.backBtnPrimary : styles.backBtnSurface]}
-            onPress={onBack}
+            onPress={handleBack}
             activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
             accessibilityLabel="Kembali"
           >
             <ArrowLeft size={20} color={isPrimary ? colors.white : colors.textPrimary} />
@@ -70,7 +86,9 @@ const styles = StyleSheet.create({
   },
   containerPrimary: {
     backgroundColor: colors.primary,
-    ...shadows.redGlow
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    ...shadows.soft
   },
   containerSurface: {
     backgroundColor: colors.surface,
@@ -105,7 +123,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   title: {
+    fontFamily: typography.h2.fontFamily,
     fontSize: 18,
+    lineHeight: 24,
     fontWeight: '700',
     letterSpacing: -0.2
   },
@@ -116,8 +136,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary
   },
   subtitle: {
+    fontFamily: typography.caption.fontFamily,
     fontSize: 12,
-    fontWeight: '400',
+    lineHeight: 16,
+    fontWeight: '500',
     marginTop: 2
   },
   subtitlePrimary: {

@@ -5,17 +5,22 @@
     "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
       "backgroundColor": "#0f172a",
       "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.wargaku.ipl"
+      "bundleIdentifier": "com.wargaku.ipl",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Aplikasi membutuhkan akses kamera untuk mengambil foto bukti transfer dan scan QRIS.",
+        "NSPhotoLibraryUsageDescription": "Aplikasi membutuhkan akses galeri foto untuk memilih bukti pembayaran transfer bank."
+      }
     },
     "android": {
       "package": "com.wargaku.ipl",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#059669",
@@ -25,8 +30,45 @@
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "POST_NOTIFICATIONS"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#059669",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Izinkan aplikasi mengakses galeri foto untuk bukti pembayaran.",
+          "cameraPermission": "Izinkan aplikasi menggunakan kamera untuk memotret bukti transfer."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Izinkan aplikasi mengakses lokasi Anda untuk menampilkan koordinat pada peta lingkungan."
+        }
       ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8b5f3a02-6e21-4f9a-bb91-c67d329188bf"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

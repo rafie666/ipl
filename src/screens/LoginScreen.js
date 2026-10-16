@@ -10,7 +10,7 @@ import {
   Platform
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Building2, User, Lock, Eye, EyeOff, Shield } from 'lucide-react-native'
+import { Building2, User, Lock, Eye, EyeOff, Shield, Wallet, ShieldCheck, Home, ArrowLeft } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import AppCard from '../components/AppCard'
 import AppButton from '../components/AppButton'
@@ -24,7 +24,7 @@ export default function LoginScreen({ navigation }) {
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [selectedRole, setSelectedRole] = useState('warga') // 'warga' | 'rt' | 'admin'
+  const [selectedRole, setSelectedRole] = useState('warga') // 'warga' | 'rt' | 'rw' | 'bendahara' | 'pengurus' | 'admin'
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role)
@@ -34,6 +34,15 @@ export default function LoginScreen({ navigation }) {
       setPassword('password')
     } else if (role === 'rt') {
       setUsername('rt')
+      setPassword('password')
+    } else if (role === 'rw') {
+      setUsername('rw')
+      setPassword('password')
+    } else if (role === 'bendahara') {
+      setUsername('bendahara')
+      setPassword('password')
+    } else if (role === 'pengurus') {
+      setUsername('pengurus')
       setPassword('password')
     } else if (role === 'admin') {
       setUsername('admin')
@@ -64,6 +73,15 @@ export default function LoginScreen({ navigation }) {
     }
   }
 
+  const roleButtons = [
+    { key: 'warga', label: 'Warga', icon: User },
+    { key: 'rt', label: 'Ketua RT', icon: Home },
+    { key: 'rw', label: 'Ketua RW', icon: Building2 },
+    { key: 'bendahara', label: 'Bendahara', icon: Wallet },
+    { key: 'pengurus', label: 'Pengurus', icon: ShieldCheck },
+    { key: 'admin', label: 'Admin IT', icon: Shield }
+  ]
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -79,6 +97,18 @@ export default function LoginScreen({ navigation }) {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Back Button if navigated from another page */}
+        {navigation?.canGoBack && navigation.canGoBack() ? (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.8}
+            accessibilityLabel="Kembali"
+          >
+            <ArrowLeft size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Brand Header */}
         <View style={styles.header}>
           <View style={styles.logoBadge}>
@@ -92,40 +122,34 @@ export default function LoginScreen({ navigation }) {
         <AppCard style={styles.card}>
           <Text style={styles.cardTitle}>Masuk ke Akun Anda</Text>
 
-          {/* Role Switcher */}
-          <View style={styles.roleContainer}>
-            <TouchableOpacity
-              style={[styles.roleBtn, selectedRole === 'warga' && styles.roleBtnActive]}
-              onPress={() => handleRoleSelect('warga')}
-              activeOpacity={0.8}
-            >
-              <User size={13} color={selectedRole === 'warga' ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.roleBtnText, selectedRole === 'warga' && styles.roleBtnTextActive]}>
-                Warga
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleBtn, selectedRole === 'rt' && styles.roleBtnActive]}
-              onPress={() => handleRoleSelect('rt')}
-              activeOpacity={0.8}
-            >
-              <Building2 size={13} color={selectedRole === 'rt' ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.roleBtnText, selectedRole === 'rt' && styles.roleBtnTextActive]}>
-                Ketua RT
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleBtn, selectedRole === 'admin' && styles.roleBtnActive]}
-              onPress={() => handleRoleSelect('admin')}
-              activeOpacity={0.8}
-            >
-              <Shield size={13} color={selectedRole === 'admin' ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.roleBtnText, selectedRole === 'admin' && styles.roleBtnTextActive]}>
-                Admin RW
-              </Text>
-            </TouchableOpacity>
+          {/* Quick Preset Selector */}
+          <Text style={styles.quickPresetTitle}>Pilih Cepat Role & Akun Demo:</Text>
+          <View style={styles.roleGrid}>
+            {roleButtons.map((r) => {
+              const IconComp = r.icon
+              const isActive = selectedRole === r.key
+              return (
+                <TouchableOpacity
+                  key={r.key}
+                  style={[
+                    styles.roleChip,
+                    isActive && { backgroundColor: colors.primarySubtle, borderColor: colors.primary }
+                  ]}
+                  onPress={() => handleRoleSelect(r.key)}
+                  activeOpacity={0.8}
+                >
+                  <IconComp size={13} color={isActive ? colors.primary : colors.textSecondary} />
+                  <Text
+                    style={[
+                      styles.roleChipText,
+                      isActive && { color: colors.primary, fontWeight: '700' }
+                    ]}
+                  >
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
           </View>
 
           {errorMsg ? (
@@ -230,34 +254,33 @@ const styles = StyleSheet.create({
     ...typography.h3,
     marginBottom: spacing.md
   },
-  roleContainer: {
+  quickPresetTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8
+  },
+  roleGrid: {
     flexDirection: 'row',
-    backgroundColor: '#EAECF0',
-    borderRadius: radius.md,
-    padding: 3,
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: spacing.md
   },
-  roleBtn: {
-    flex: 1,
+  roleChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    borderRadius: radius.sm
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#F8FAFC'
   },
-  roleBtnActive: {
-    backgroundColor: colors.surface,
-    ...shadows.soft
-  },
-  roleBtnText: {
+  roleChipText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary
-  },
-  roleBtnTextActive: {
-    color: colors.primary,
-    fontWeight: '700'
   },
   errorBanner: {
     backgroundColor: '#FEF2F2',
@@ -307,5 +330,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: '700',
     color: colors.primary
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
   }
 })
