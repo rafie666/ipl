@@ -9,7 +9,8 @@ import {
   TextInput,
   Alert,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native'
 import {
   Wallet,
@@ -473,10 +474,14 @@ export default function KasScreen({ navigation, route }) {
         /* List Transaksi Kas */
         <FlatList
           data={filteredKas}
-          keyExtractor={(item) => item.id || String(Math.random())}
+          keyExtractor={(item, idx) => item.id || `kas-${item.tanggal}-${idx}`}
           renderItem={renderKasItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

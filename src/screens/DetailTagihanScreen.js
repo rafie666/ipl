@@ -270,6 +270,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
   }
 
   const handleApproveLunas = () => {
+    if (loading) return
     Alert.alert(
       'Konfirmasi Verifikasi Lunas',
       `Apakah Anda yakin ingin menyetujui pembayaran tagihan ${recipientLabel} warga ${namaWarga} sebesar ${formatRupiah(tagihan.total)} sebagai LUNAS?`,
@@ -278,12 +279,22 @@ export default function DetailTagihanScreen({ route, navigation }) {
         {
           text: 'Ya, Setujui Lunas',
           onPress: async () => {
+            if (loading) return
             setLoading(true)
-            await verifikasiTagihan(tagihan.id, 'Lunas')
-            setLoading(false)
-            Alert.alert('Sukses', 'Pembayaran berhasil diverifikasi sebagai LUNAS!', [
-              { text: 'OK', onPress: () => navigation.goBack() }
-            ])
+            try {
+              const res = await verifikasiTagihan(tagihan.id, 'Lunas')
+              if (res && res.success) {
+                Alert.alert('Sukses', 'Pembayaran berhasil diverifikasi sebagai LUNAS!', [
+                  { text: 'OK', onPress: () => navigation.goBack() }
+                ])
+              } else {
+                Alert.alert('Gagal', res?.message || 'Gagal memverifikasi pembayaran.')
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Terjadi kesalahan sistem saat memverifikasi pembayaran.')
+            } finally {
+              setLoading(false)
+            }
           }
         }
       ]
@@ -751,9 +762,10 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
         {Boolean(isAdminLoggedIn && !isLunas && !isPending) ? (
           <TouchableOpacity
-            style={[styles.payBtn, { backgroundColor: '#0284C7', marginTop: 12 }]}
+            style={[styles.payBtn, { backgroundColor: '#0284C7', marginTop: 12 }, loading && styles.btnDisabled]}
             onPress={handleApproveLunas}
             activeOpacity={0.88}
+            disabled={loading}
           >
             <Check size={18} color={colors.white} style={{ marginRight: 8 }} />
             <Text style={styles.payBtnText}>Catat Pelunasan Tunai (Kas Masuk)</Text>

@@ -202,6 +202,7 @@ export function AppProvider({ children }) {
           const autoGenResult = buildAutoBillingInvoices({
             targetYear: autoBillingEval.targetYear,
             targetMonth: autoBillingEval.targetMonth,
+            publishDay: autoBillingEval.effectivePublishDay || autoCfg.publishDay || 5,
             dueDay: autoBillingEval.effectiveDueDay || autoCfg.dueDay || 20,
             scope: autoCfg.scope || 'ALL',
             residents: sanitizedWarga,
@@ -2288,83 +2289,117 @@ export function AppProvider({ children }) {
       scope: 'ALL'
     }
 
-    const result = buildAutoBillingInvoices({
-      targetYear: targetY,
-      targetMonth: targetM,
-      dueDay: autoCfg.dueDay || 20,
-      scope: autoCfg.scope || 'ALL',
-      residents: warga,
-      iuranRates: jenisIuran,
-      existingInvoices: tagihan,
-      rts
-    })
+    try {
+      const result = buildAutoBillingInvoices({
+        targetYear: targetY,
+        targetMonth: targetM,
+        publishDay: autoCfg.publishDay || 5,
+        dueDay: autoCfg.dueDay || 20,
+        scope: autoCfg.scope || 'ALL',
+        residents: warga,
+        iuranRates: jenisIuran,
+        existingInvoices: tagihan,
+        rts
+      })
 
-    if (result.createdInvoices.length > 0) {
-      const updatedTagihan = [...result.createdInvoices, ...tagihan]
-      setTagihan(updatedTagihan)
-      await saveStorageItem(STORAGE_KEYS.TAGIHAN, updatedTagihan)
+      if (result.createdInvoices.length > 0) {
+        const updatedTagihan = [...result.createdInvoices, ...tagihan]
+        setTagihan(updatedTagihan)
+        await saveStorageItem(STORAGE_KEYS.TAGIHAN, updatedTagihan)
 
-      if (result.createdNotifications.length > 0) {
-        const updatedNotifs = [...result.createdNotifications, ...notifications]
-        setNotifications(updatedNotifs)
-        await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updatedNotifs)
-      }
+        if (result.createdNotifications.length > 0) {
+          const updatedNotifs = [...result.createdNotifications, ...notifications]
+          setNotifications(updatedNotifs)
+          await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updatedNotifs)
+        }
 
-      // Sync ke Supabase wargaku_tagihan & wargaku_notifications
-      if (isSupabaseConfigured) {
-        try {
-          const dbInvoices = result.createdInvoices.map((inv) => ({
-            id: inv.id,
-            data: inv,
-            updated_at: new Date().toISOString()
-          }))
-          await supabase.from('wargaku_tagihan').upsert(dbInvoices, { onConflict: 'id' })
-
-          if (result.createdNotifications.length > 0) {
-            const dbNotifs = result.createdNotifications.map((n) => ({
-              id: n.id,
-              data: n,
+        // Sync ke Supabase wargaku_tagihan & wargaku_notifications
+        if (isSupabaseConfigured) {
+          try {
+            const dbInvoices = result.createdInvoices.map((inv) => ({
+              id: inv.id,
+              data: inv,
               updated_at: new Date().toISOString()
             }))
-            await supabase.from('wargaku_notifications').upsert(dbNotifs, { onConflict: 'id' })
+            await supabase.from('wargaku_tagihan').upsert(dbInvoices, { onConflict: 'id' })
+
+            if (result.createdNotifications.length > 0) {
+              const dbNotifs = result.createdNotifications.map((n) => ({
+                id: n.id,
+                data: n,
+                updated_at: new Date().toISOString()
+              }))
+              await supabase.from('wargaku_notifications').upsert(dbNotifs, { onConflict: 'id' })
+            }
+          } catch (e) {
+            console.warn('Gagal sync tagihan otomatis ke Supabase:', e)
           }
-        } catch (e) {
-          console.warn('Gagal sync tagihan otomatis ke Supabase:', e)
         }
       }
-    }
 
-    // Update monitoring status
-    const updatedAutoBilling = {
-      ...autoCfg,
-      last_run_at: new Date().toISOString(),
-      last_run_period: result.period,
-      last_run_status: 'success',
-      last_run_created_count: result.totalCreated,
-      last_run_skipped_count: Math.max(0, warga.length * (autoCfg.scope === 'ALL' ? 2 : 1) - result.totalCreated),
-      last_run_message: result.totalCreated > 0
-        ? `Berhasil menerbitkan ${result.totalCreated} tagihan IPL periode ${result.periodLabel}.`
-        : `Semua tagihan untuk periode ${result.periodLabel} sudah ada (0 duplikasi dibuat).`,
-      scheduler_heartbeat: new Date().toISOString(),
-      scheduler_status: 'RUNNING'
-    }
+      // Update monitoring status
+      const updatedAutoBilling = {
+        ...autoCfg,
+        last_run_at: new Date().toISOString(),
+        last_run_period: result.period,
+        last_run_status: 'success',
+        last_run_error: null,
+        last_run_created_count: result.totalCreated,
+        last_run_skipped_count: Math.max(0, warga.length * (autoCfg.scope === 'ALL' ? 2 : 1) - result.totalCreated),
+        last_run_message: result.totalCreated > 0
+          ? `Berhasil menerbitkan ${result.totalCreated} tagihan IPL periode ${result.periodLabel}.`
+          : `Semua tagihan untuk periode ${result.periodLabel} sudah ada (0 duplikasi dibuat).`,
+        scheduler_heartbeat: new Date().toISOString(),
+        scheduler_status: 'RUNNING'
+      }
 
-    const updatedConfig = { ...config, autoBilling: updatedAutoBilling }
-    setConfig(updatedConfig)
-    await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
+      const updatedConfig = { ...config, autoBilling: updatedAutoBilling }
+      setConfig(updatedConfig)
+      await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
 
-    await addAuditLog({
-      action: 'TRIGGER_AUTO_BILLING_MANUAL',
-      entity: 'tagihan',
-      entityId: `auto-${result.period}`,
-      details: updatedAutoBilling.last_run_message
-    })
+      await addAuditLog({
+        action: 'TRIGGER_AUTO_BILLING_MANUAL',
+        entity: 'tagihan',
+        entityId: `auto-${result.period}`,
+        details: updatedAutoBilling.last_run_message
+      })
 
-    return {
-      success: true,
-      createdCount: result.totalCreated,
-      period: result.periodLabel,
-      message: updatedAutoBilling.last_run_message
+      return {
+        success: true,
+        createdCount: result.totalCreated,
+        period: result.periodLabel,
+        message: updatedAutoBilling.last_run_message
+      }
+    } catch (err) {
+      console.error('Error saat eksekusi otomatisasi tagihan:', err)
+      const errorMsg = err?.message || 'Terjadi kesalahan sistem saat memproses tagihan'
+
+      const failedAutoBilling = {
+        ...autoCfg,
+        last_run_at: new Date().toISOString(),
+        last_run_status: 'failed',
+        last_run_error: errorMsg,
+        last_run_message: `Gagal memproses tagihan otomatis: ${errorMsg}`,
+        scheduler_heartbeat: new Date().toISOString(),
+        scheduler_status: 'ERROR'
+      }
+
+      const updatedConfig = { ...config, autoBilling: failedAutoBilling }
+      setConfig(updatedConfig)
+      await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
+
+      await addAuditLog({
+        action: 'TRIGGER_AUTO_BILLING_FAILED',
+        entity: 'tagihan',
+        entityId: `auto-failed-${Date.now()}`,
+        details: failedAutoBilling.last_run_message
+      })
+
+      return {
+        success: false,
+        createdCount: 0,
+        message: errorMsg
+      }
     }
   }
 

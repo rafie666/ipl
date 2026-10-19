@@ -400,7 +400,7 @@ export function filterBillsByRole(bills = [], residents = [], currentUser = null
       return bills.filter((b) => {
         if (rwWargaIds.has(b.wargaId)) return true
         if (b.target_payment_owner === currentUser.rw_id) return true
-        return true
+        return false
       })
     }
     return bills

@@ -208,6 +208,7 @@ export function shouldExecuteAutoBilling({
 export function buildAutoBillingInvoices({
   targetYear,
   targetMonth,
+  publishDay = 5,
   dueDay = 20,
   scope = 'ALL',
   residents = [],
@@ -305,7 +306,7 @@ export function buildAutoBillingInvoices({
         pembayaran_kepada: ownerLabel,
         status: 'Belum Bayar',
         tanggalJatuhTempo: dueDateStr,
-        tanggalTerbit: `${t}-${String(b).padStart(2, '0')}-${String(getEffectivePublishDay(t, b, 5)).padStart(2, '0')}`,
+        tanggalTerbit: `${t}-${String(b).padStart(2, '0')}-${String(getEffectivePublishDay(t, b, publishDay)).padStart(2, '0')}`,
         tanggalBayar: null,
         metodeBayar: null,
         noKwitansi: null,
