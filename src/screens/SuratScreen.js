@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
   Share,
   RefreshControl,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native'
 import {
   FileText,
@@ -26,8 +27,11 @@ import {
   MessageSquare,
   AlertTriangle,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   User,
-  Check
+  Check,
+  Calendar
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import AppHeader from '../components/AppHeader'
@@ -63,6 +67,33 @@ export default function SuratScreen({ navigation }) {
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectedSurat, setSelectedSurat] = useState(null)
   const [previewSurat, setPreviewSurat] = useState(null)
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
+  const chatScrollRef = useRef(null)
+
+  // Date and Time Formatters for Chat
+  const formatChatDateHeader = (dateStr) => {
+    if (!dateStr) return 'Hari Ini'
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return 'Hari Ini'
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const diffDays = Math.round((today - msgDate) / (1000 * 60 * 60 * 24))
+    if (diffDays === 0) return 'Hari Ini'
+    if (diffDays === 1) return 'Kemarin'
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    })
+  }
+
+  const formatChatTime = (dateStr) => {
+    if (!dateStr) return 'Baru saja'
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return 'Baru saja'
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
 
   // Form State (Pengajuan Surat)
   const [tujuan, setTujuan] = useState('rt') // 'rt' | 'rw' | 'both'
@@ -128,11 +159,15 @@ export default function SuratScreen({ navigation }) {
 
   const handleOpenDetail = async (item) => {
     setSelectedSurat(item)
-    setReplyStatus(item.status === 'Selesai' ? 'Selesai' : 'Diproses')
+    setReplyStatus(item.status === 'Selesai' ? 'Selesai' : (item.status === 'Ditolak' ? 'Ditolak' : 'Diproses'))
     setBalasanText('')
+    setSummaryExpanded(false)
     setDetailModalOpen(true)
     // Mark as read for current role (§3 & §5)
     await bacaSurat(item.id)
+    setTimeout(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: false })
+    }, 120)
   }
 
   const handleKirimBalasan = async () => {
@@ -149,7 +184,7 @@ export default function SuratScreen({ navigation }) {
       })
 
       // Update local state for immediate feedback
-      const targetUserRole = isRT ? 'rt' : isRW ? 'rw' : 'warga'
+      const targetUserRole = isRT ? 'rt' : isRW ? 'rw' : (isAdminLoggedIn ? 'pengurus' : 'warga')
       const newReply = {
         id: `reply-${Date.now()}`,
         senderRole: targetUserRole,
@@ -166,7 +201,9 @@ export default function SuratScreen({ navigation }) {
       }))
 
       setBalasanText('')
-      Alert.alert('Terkirim', 'Tanggapan/balasan surat berhasil dikirim.')
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true })
+      }, 100)
     } catch (e) {
       Alert.alert('Error', 'Gagal mengirim balasan surat.')
     } finally {
@@ -446,8 +483,7 @@ export default function SuratScreen({ navigation }) {
           </View>
         }
       >
-        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-          {/* Pilihan Tujuan Penerima (§2) */}
+        {/* Pilihan Tujuan Penerima (§2) */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tujuan Penerima Surat *</Text>
             <View style={styles.tujuanSelectorWrap}>
@@ -539,134 +575,203 @@ export default function SuratScreen({ navigation }) {
               onChangeText={setIsiSurat}
             />
           </View>
-        </ScrollView>
       </AppModal>
 
       {/* ===================== MODAL DETAIL & PERCAKAPAN SURAT (§3) ===================== */}
       <AppModal
         visible={detailModalOpen}
         title="Detail & Percakapan Surat"
-        subtitle={selectedSurat ? `${selectedSurat.jenisSurat} • ${selectedSurat.namaWarga || 'Warga'}` : ''}
+        subtitle={
+          selectedSurat
+            ? `${selectedSurat.jenisSurat} • ${selectedSurat.namaWarga || allWarga?.find((w) => w.id === selectedSurat?.wargaId)?.nama || 'Warga'}`
+            : ''
+        }
         onClose={() => setDetailModalOpen(false)}
+        scrollable={false}
+        maxHeightPercent="92%"
+        dialogStyle={styles.chatModalDialog}
+        contentStyle={styles.chatModalContent}
         footer={
-          <View style={{ width: '100%', gap: 8 }}>
+          <View style={styles.modalFooterRow}>
             {(selectedSurat?.status === 'Selesai' || selectedSurat?.status === 'Disetujui') && (
-              <AppButton
-                title="Lihat Format Surat Resmi"
-                variant="primary"
-                icon={<Eye size={16} color={colors.surface} />}
-                onPress={() => {
-                  setDetailModalOpen(false)
-                  setPreviewSurat(selectedSurat)
-                }}
-              />
+              <View style={{ flex: 1 }}>
+                <AppButton
+                  title="Lihat Format Surat"
+                  variant="primary"
+                  size="small"
+                  icon={<Eye size={15} color={colors.surface} />}
+                  onPress={() => {
+                    setDetailModalOpen(false)
+                    setPreviewSurat(selectedSurat)
+                  }}
+                />
+              </View>
             )}
-            <AppButton
-              title="Tutup"
-              variant="secondary"
-              onPress={() => setDetailModalOpen(false)}
-            />
+            <View style={{ flex: (selectedSurat?.status === 'Selesai' || selectedSurat?.status === 'Disetujui') ? 1 : 2 }}>
+              <AppButton
+                title="Tutup"
+                variant="secondary"
+                size="small"
+                onPress={() => setDetailModalOpen(false)}
+              />
+            </View>
           </View>
         }
       >
         {selectedSurat && (
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
-            {/* Kartu Ringkasan Surat */}
-            <View style={styles.detailSummaryCard}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <View style={[
-                  styles.targetBadge,
-                  selectedSurat.tujuan === 'rw' ? styles.targetBadgeRw : (selectedSurat.tujuan === 'both' ? styles.targetBadgeBoth : styles.targetBadgeRt)
-                ]}>
-                  <Text style={[
-                    styles.targetBadgeText,
-                    selectedSurat.tujuan === 'rw' ? styles.targetBadgeTextRw : (selectedSurat.tujuan === 'both' ? styles.targetBadgeTextBoth : styles.targetBadgeTextRt)
+          <View style={styles.chatModalInnerContainer}>
+            {/* Header Ringkasan Surat (Collapsible agar hemat layar di HP) */}
+            <View style={styles.detailSummaryCardCompact}>
+              <View style={styles.detailSummaryTopRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+                  <View style={[
+                    styles.targetBadge,
+                    selectedSurat.tujuan === 'rw' ? styles.targetBadgeRw : (selectedSurat.tujuan === 'both' ? styles.targetBadgeBoth : styles.targetBadgeRt)
                   ]}>
-                    {selectedSurat.tujuan === 'rw' ? 'Tujuan: Ketua RW' : (selectedSurat.tujuan === 'both' ? 'Tujuan: RT & RW' : 'Tujuan: Ketua RT')}
-                  </Text>
+                    <Text style={[
+                      styles.targetBadgeText,
+                      selectedSurat.tujuan === 'rw' ? styles.targetBadgeTextRw : (selectedSurat.tujuan === 'both' ? styles.targetBadgeTextBoth : styles.targetBadgeTextRt)
+                    ]}>
+                      {selectedSurat.tujuan === 'rw' ? 'Ketua RW' : (selectedSurat.tujuan === 'both' ? 'RT & RW' : 'Ketua RT')}
+                    </Text>
+                  </View>
+                  <AppBadge status={selectedSurat.status} label={selectedSurat.status} />
                 </View>
 
-                <AppBadge status={selectedSurat.status} label={selectedSurat.status} />
+                <TouchableOpacity
+                  style={styles.summaryToggleBtn}
+                  onPress={() => setSummaryExpanded(!summaryExpanded)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={styles.summaryToggleText}>
+                    {summaryExpanded ? 'Sembunyikan' : 'Rincian'}
+                  </Text>
+                  {summaryExpanded ? (
+                    <ChevronUp size={14} color={colors.primary} />
+                  ) : (
+                    <ChevronDown size={14} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.detailTitleText}>{selectedSurat.jenisSurat}</Text>
-              <Text style={styles.detailKeperluanText}>
-                <Text style={{ fontWeight: '700' }}>Keperluan: </Text>{selectedSurat.keperluan}
+              <Text style={styles.detailSummaryTitle} numberOfLines={summaryExpanded ? undefined : 1}>
+                {selectedSurat.keperluan || selectedSurat.jenisSurat}
               </Text>
 
-              {Boolean(selectedSurat.isiSurat) && (
-                <Text style={styles.detailIsiText}>
-                  <Text style={{ fontWeight: '700' }}>Rincian: </Text>{selectedSurat.isiSurat}
-                </Text>
+              {summaryExpanded && (
+                <View style={styles.detailSummaryExpandedBody}>
+                  {Boolean(selectedSurat.isiSurat) && (
+                    <Text style={styles.detailIsiText}>
+                      <Text style={{ fontWeight: '700' }}>Rincian: </Text>{selectedSurat.isiSurat}
+                    </Text>
+                  )}
+                  <View style={styles.detailMetaRow}>
+                    <Text style={styles.detailMetaText}>
+                      Pemohon: {selectedSurat.namaWarga || allWarga?.find((w) => w.id === selectedSurat?.wargaId)?.nama || 'Warga'} (Blok {selectedSurat.blok || '-'}/{selectedSurat.noRumah || '-'})
+                    </Text>
+                    <Text style={styles.detailMetaText}>
+                      {selectedSurat.tanggal || 'Hari ini'}
+                    </Text>
+                  </View>
+                </View>
               )}
-
-              <View style={styles.detailMetaRow}>
-                <Text style={styles.detailMetaText}>
-                  Pemohon: {selectedSurat.namaWarga || 'Warga'} (Blok {selectedSurat.blok || '-'}/{selectedSurat.noRumah || '-'})
-                </Text>
-                <Text style={styles.detailMetaText}>
-                  Tanggal: {selectedSurat.tanggal || 'Hari ini'}
-                </Text>
-              </View>
             </View>
 
-            {/* Riwayat Percakapan & Balasan (§3) */}
-            <View style={styles.threadSection}>
-              <View style={styles.threadHeaderRow}>
-                <MessageSquare size={16} color={colors.primary} />
-                <Text style={styles.threadHeaderTitle}>Riwayat Balasan & Catatan</Text>
-              </View>
-
+            {/* Riwayat Percakapan (Scrollable Area) */}
+            <ScrollView
+              ref={chatScrollRef}
+              style={styles.chatScrollView}
+              contentContainerStyle={styles.chatScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+            >
               {(!selectedSurat.balasan || selectedSurat.balasan.length === 0) ? (
                 <View style={styles.emptyThreadBox}>
+                  <MessageSquare size={24} color={colors.textSecondary} style={{ marginBottom: 6, opacity: 0.6 }} />
+                  <Text style={styles.emptyThreadTitle}>Belum Ada Percakapan</Text>
                   <Text style={styles.emptyThreadText}>
-                    Belum ada catatan atau balasan. Silakan sampaikan pesan di bawah.
+                    Gunakan kolom di bawah untuk mengirim pesan, klarifikasi dokumen, atau catatan status.
                   </Text>
                 </View>
               ) : (
-                <View style={{ gap: 8, marginTop: 6 }}>
-                  {selectedSurat.balasan.map((reply, idx) => {
-                    const isSenderWarga = reply.senderRole === 'warga'
-                    const isSenderRw = reply.senderRole === 'rw'
-                    return (
-                      <View
-                        key={reply.id || idx}
-                        style={[
-                          styles.chatBubble,
-                          isSenderWarga ? styles.chatBubbleWarga : (isSenderRw ? styles.chatBubbleRw : styles.chatBubbleRt)
-                        ]}
-                      >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                          <View style={[
-                            styles.senderRoleTag,
-                            isSenderWarga ? styles.senderRoleTagWarga : (isSenderRw ? styles.senderRoleTagRw : styles.senderRoleTagRt)
-                          ]}>
-                            <Text style={[
-                              styles.senderRoleTagText,
-                              isSenderWarga ? styles.senderRoleTagTextWarga : (isSenderRw ? styles.senderRoleTagTextRw : styles.senderRoleTagTextRt)
-                            ]}>
-                              {reply.senderName || (isSenderWarga ? 'Warga' : isSenderRw ? 'Ketua RW' : 'Ketua RT')}
-                            </Text>
-                          </View>
+                (() => {
+                  const sortedBalasan = [...(selectedSurat.balasan || [])].sort((a, b) => {
+                    const tA = a.created_at ? new Date(a.created_at).getTime() : 0
+                    const tB = b.created_at ? new Date(b.created_at).getTime() : 0
+                    return tA - tB
+                  })
 
-                          <Text style={styles.chatTimeText}>
-                            {reply.created_at ? new Date(reply.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Baru saja'}
-                          </Text>
-                        </View>
+                  let lastDateHeader = null
 
-                        <Text style={styles.chatMessageText}>{reply.pesan}</Text>
-                      </View>
-                    )
-                  })}
-                </View>
+                  return (
+                    <View style={{ gap: 8 }}>
+                      {sortedBalasan.map((reply, idx) => {
+                        const isSenderWarga = reply.senderRole === 'warga'
+                        const isSenderRw = reply.senderRole === 'rw'
+
+                        const currentDateHeader = formatChatDateHeader(reply.created_at)
+                        const showDateDivider = currentDateHeader !== lastDateHeader
+                        if (showDateDivider) {
+                          lastDateHeader = currentDateHeader
+                        }
+
+                        return (
+                          <React.Fragment key={reply.id || idx}>
+                            {showDateDivider && (
+                              <View style={styles.dateDividerWrapper}>
+                                <View style={styles.dateDividerLine} />
+                                <View style={styles.dateDividerPill}>
+                                  <Calendar size={11} color={colors.textSecondary} style={{ marginRight: 4 }} />
+                                  <Text style={styles.dateDividerText}>{currentDateHeader}</Text>
+                                </View>
+                                <View style={styles.dateDividerLine} />
+                              </View>
+                            )}
+
+                            <View
+                              style={[
+                                styles.chatBubble,
+                                isSenderWarga
+                                  ? styles.chatBubbleWarga
+                                  : (isSenderRw ? styles.chatBubbleRw : styles.chatBubbleRt)
+                              ]}
+                            >
+                              <View style={styles.chatBubbleHeader}>
+                                <View style={[
+                                  styles.senderRoleTag,
+                                  isSenderWarga ? styles.senderRoleTagWarga : (isSenderRw ? styles.senderRoleTagRw : styles.senderRoleTagRt)
+                                ]}>
+                                  <Text style={[
+                                    styles.senderRoleTagText,
+                                    isSenderWarga ? styles.senderRoleTagTextWarga : (isSenderRw ? styles.senderRoleTagTextRw : styles.senderRoleTagTextRt)
+                                  ]}>
+                                    {reply.senderName || (isSenderWarga ? 'Warga' : isSenderRw ? 'Ketua RW' : 'Ketua RT')}
+                                  </Text>
+                                </View>
+
+                                <Text style={styles.chatTimeText}>
+                                  {formatChatTime(reply.created_at)}
+                                </Text>
+                              </View>
+
+                              <Text style={styles.chatMessageText}>{reply.pesan}</Text>
+                            </View>
+                          </React.Fragment>
+                        )
+                      })}
+                    </View>
+                  )
+                })()
               )}
-            </View>
+            </ScrollView>
 
-            {/* Form Balasan & Update Status (§3) */}
-            <View style={styles.replyInputSection}>
+            {/* Input Bar Pinned di Bagian Bawah Modal (Tidak Hilang Saat Scroll) */}
+            <View style={styles.pinnedReplyContainer}>
               {isAdminLoggedIn && (
-                <View style={{ marginBottom: 8 }}>
-                  <Text style={styles.label}>Ubah Status Surat</Text>
+                <View style={styles.adminStatusRow}>
+                  <Text style={styles.adminStatusLabel}>Ubah Status:</Text>
                   <View style={styles.statusChipsRow}>
                     {['Diproses', 'Selesai', 'Ditolak'].map((st) => (
                       <TouchableOpacity
@@ -684,32 +789,33 @@ export default function SuratScreen({ navigation }) {
                 </View>
               )}
 
-              <Text style={styles.label}>
-                {isAdminLoggedIn ? 'Tulis Balasan / Catatan Pengurus' : 'Kirim Balasan / Pertanyaan ke Pengurus'}
-              </Text>
-
               <View style={styles.replyBoxWrapper}>
                 <TextInput
                   style={styles.replyTextInput}
-                  placeholder={isAdminLoggedIn ? 'Tulis arahan, nomor surat, atau info pengambilan...' : 'Tulis balasan atau klarifikasi dokumen...'}
+                  placeholder={isAdminLoggedIn ? 'Tulis instruksi/balasan...' : 'Tulis balasan atau klarifikasi...'}
                   placeholderTextColor={colors.textSecondary}
                   multiline
                   value={balasanText}
                   onChangeText={setBalasanText}
+                  accessibilityLabel="Tulis balasan surat"
                 />
                 <TouchableOpacity
                   style={[styles.sendReplyBtn, (!balasanText.trim() && !isAdminLoggedIn) && styles.sendReplyBtnDisabled]}
                   onPress={handleKirimBalasan}
-                  disabled={submittingReply}
+                  disabled={submittingReply || (!balasanText.trim() && !isAdminLoggedIn)}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel="Kirim Balasan"
                 >
-                  <Send size={16} color={colors.surface} />
+                  {submittingReply ? (
+                    <ActivityIndicator size="small" color={colors.surface} />
+                  ) : (
+                    <Send size={18} color={colors.surface} />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
+          </View>
         )}
       </AppModal>
 
@@ -1168,13 +1274,141 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2
   },
+  chatModalDialog: {
+    height: '90%',
+    maxHeight: 640,
+    maxWidth: 520,
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  chatModalContent: {
+    flex: 1,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  chatModalInnerContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden'
+  },
+  detailSummaryCardCompact: {
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  detailSummaryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  summaryToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#EEF2F6',
+    borderRadius: radius.full
+  },
+  summaryToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary
+  },
+  detailSummaryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary
+  },
+  detailSummaryExpandedBody: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0'
+  },
+  chatScrollView: {
+    flex: 1,
+    backgroundColor: '#F8FAFC'
+  },
+  chatScrollContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingBottom: spacing.md
+  },
+  dateDividerWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8
+  },
+  dateDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0'
+  },
+  dateDividerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    marginHorizontal: 8
+  },
+  dateDividerText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.textSecondary
+  },
+  chatBubbleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  emptyThreadTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  pinnedReplyContainer: {
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  adminStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6
+  },
+  adminStatusLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.textSecondary
+  },
+  modalFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%'
+  },
   replyInputSection: {
     marginTop: spacing.xs
   },
   statusChipsRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 2
+    flex: 1
   },
   statusOptionChip: {
     flex: 1,
@@ -1200,12 +1434,11 @@ const styles = StyleSheet.create({
   replyBoxWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 6,
-    marginTop: 4
+    gap: 6
   },
   replyTextInput: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 44,
     maxHeight: 90,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1217,8 +1450,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   sendReplyBtn: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     alignItems: 'center',

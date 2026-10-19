@@ -26,7 +26,10 @@ export default function AppModal({
   secondaryActionLabel,
   onSecondaryAction,
   maxHeightPercent = '88%',
-  scrollable = true
+  scrollable = true,
+  contentStyle,
+  dialogStyle,
+  showsVerticalScrollIndicator = false
 }) {
   const handleSecondary = onSecondaryAction || onClose
 
@@ -51,7 +54,7 @@ export default function AppModal({
           style={styles.keyboardWrap}
           pointerEvents="box-none"
         >
-          <View style={[styles.dialog, { maxHeight: maxHeightPercent }]}>
+          <View style={[styles.dialog, { maxHeight: maxHeightPercent }, dialogStyle]}>
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerTitleWrap}>
@@ -79,9 +82,9 @@ export default function AppModal({
             {/* Content Body */}
             {scrollable ? (
               <ScrollView
-                style={styles.scrollWrap}
+                style={[styles.scrollWrap, contentStyle]}
                 contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={true}
+                showsVerticalScrollIndicator={showsVerticalScrollIndicator}
                 keyboardShouldPersistTaps="handled"
                 nestedScrollEnabled={true}
                 bounces={true}
@@ -90,7 +93,7 @@ export default function AppModal({
                 {children}
               </ScrollView>
             ) : (
-              <View style={styles.contentNonScroll}>
+              <View style={[styles.contentNonScroll, contentStyle]}>
                 {children}
               </View>
             )}
@@ -202,7 +205,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl
   },
   contentNonScroll: {
-    padding: spacing.lg
+    padding: spacing.lg,
+    flexShrink: 1
   },
   footer: {
     flexDirection: 'row',

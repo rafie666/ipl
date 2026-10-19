@@ -59,6 +59,8 @@ import TransparansiIuranTable from '../components/TransparansiIuranTable'
 import VirtualResidentCard from '../components/VirtualResidentCard'
 import RTHeroCard from '../components/RTHeroCard'
 import RWHeroCard from '../components/RWHeroCard'
+import BendaharaHeroCard from '../components/BendaharaHeroCard'
+import PengurusHeroCard from '../components/PengurusHeroCard'
 import QuickActionGrid from '../components/QuickActionGrid'
 import KasWidget from '../components/KasWidget'
 import TransactionListItem from '../components/TransactionListItem'
@@ -291,43 +293,73 @@ export default function DashboardScreen({ navigation }) {
   return (
     <View style={styles.container}>
       {/* §5.1.2 Top Header */}
-      {isResidentView || isRT || isRW ? (
-        <View style={[styles.v2Header, { paddingTop: insets.top + 6, height: insets.top + 68 }]}>
-          <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-          <View style={[styles.v2AvatarRing, { borderColor: '#FECACA' }]}>
-            <View style={[styles.v2AvatarCircle, { backgroundColor: colors.primary }]}>
-              <Text style={styles.v2AvatarText}>
-                {isRW ? 'RW' : (isRT ? 'RT' : displayName.slice(0, 2).toUpperCase())}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.v2GreetingCol}>
-            <Text style={styles.v2GreetingCaption}>{getGreeting()}</Text>
-            <Text style={styles.v2GreetingName} numberOfLines={1}>{displayName}</Text>
-            <Text style={styles.v2GreetingSub} numberOfLines={1} ellipsizeMode="middle">
-              {isRW
-                ? `Ketua ${currentRW?.name || 'RW 01'} • Seluruh Lingkungan Perumahan`
-                : (isRT
-                  ? `Ketua ${currentRT?.name || 'RT 01'} • ${currentRW?.name || 'RW 01'}`
-                  : `${unitCodeString} • ${currentRT?.name || 'RT 01 / RW 01'}`)}
+      <View style={[styles.v2Header, { paddingTop: insets.top + 6, height: insets.top + 68 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <View style={[
+          styles.v2AvatarRing,
+          {
+            borderColor: isRW
+              ? '#C7D2FE'
+              : isRT
+              ? '#A7F3D0'
+              : isBendahara
+              ? '#6EE7B7'
+              : isPengurus
+              ? '#93C5FD'
+              : '#FECACA'
+          }
+        ]}>
+          <View style={[
+            styles.v2AvatarCircle,
+            {
+              backgroundColor: isRW
+                ? '#4F46E5'
+                : isRT
+                ? '#059669'
+                : isBendahara
+                ? '#047857'
+                : isPengurus
+                ? '#2563EB'
+                : colors.primary
+            }
+          ]}>
+            <Text style={styles.v2AvatarText}>
+              {isRW ? 'RW' : (isRT ? 'RT' : (isBendahara ? 'BD' : (isPengurus ? 'PG' : displayName.slice(0, 2).toUpperCase())))}
             </Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.v2BellBtn}
-            onPress={() => navigation.navigate('Events')}
-            accessibilityRole="button"
-            accessibilityLabel="Notifikasi"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Bell size={22} color={colors.textPrimary} />
-            {Boolean(latestAnnouncement || ((isRT || isRW) && pendingCekCount > 0)) && <View style={styles.v2BellDot} />}
-          </TouchableOpacity>
         </View>
-      ) : (
-        <TopAppBar title="Dashboard Utama" navigation={navigation} showBack={false} />
-      )}
+
+        <View style={styles.v2GreetingCol}>
+          <Text style={styles.v2GreetingCaption}>{getGreeting()}</Text>
+          <Text style={styles.v2GreetingName} numberOfLines={1}>{displayName}</Text>
+          <Text style={styles.v2GreetingSub} numberOfLines={1} ellipsizeMode="middle">
+            {isRW
+              ? `Ketua ${currentRW?.name || 'RW 01'} • Seluruh Lingkungan Perumahan`
+              : (isRT
+                ? `Ketua ${currentRT?.name || 'RT 01'} • ${currentRW?.name || 'RW 01'}`
+                : (isBendahara
+                  ? `Bendahara Kas Lingkungan • ${currentRT?.name || 'RT 01 / RW 01'}`
+                  : (isPengurus
+                    ? `Pengurus Lingkungan & Fasum • ${currentRT?.name || 'RT 01 / RW 01'}`
+                    : `${unitCodeString} • ${currentRT?.name || 'RT 01 / RW 01'}`)))}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.v2BellBtn}
+          onPress={() => navigation.navigate('Events')}
+          accessibilityRole="button"
+          accessibilityLabel="Notifikasi"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Bell size={22} color={colors.textPrimary} />
+          {Boolean(
+            latestAnnouncement ||
+            ((isRT || isRW || isBendahara) && pendingCekCount > 0) ||
+            (isPengurus && ((pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0 || (surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0) > 0))
+          ) && <View style={styles.v2BellDot} />}
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         contentContainerStyle={[
@@ -650,335 +682,423 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ===================== BENDAHARA: PUSAT KEUANGAN, VERIFIKASI & OPERASIONAL ===================== */}
-        {isBendahara && (
-          <View style={styles.bendaharaFinancialContainer}>
-            {/* 1. KARTU UTAMA: RINGKASAN KEUANGAN */}
-            <View style={styles.bendaharaMainFinanceCard}>
-              {/* Header Card */}
-              <View style={styles.bendaharaFinanceHeaderRow}>
-                <View style={styles.bendaharaFinanceIconCircle}>
-                  <Wallet size={22} color="#047857" strokeWidth={2.2} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.bendaharaFinancePreTitle}>PUSAT KEUANGAN LINGKUNGAN</Text>
-                  <Text style={styles.bendaharaFinanceMainTitle}>Rekapitulasi Iuran IPL</Text>
-                </View>
-                <View style={styles.bendaharaRoleBadge}>
-                  <Text style={styles.bendaharaRoleBadgeText}>Bendahara</Text>
-                </View>
-              </View>
-
-              {/* Rekening Sandbox Moota Pill */}
-              <View style={styles.bendaharaMootaPill}>
-                <CheckCircle2 size={16} color="#059669" strokeWidth={2.2} />
-                <Text style={styles.bendaharaMootaPillText} numberOfLines={1}>
-                  Moota Sandbox: <Text style={{ fontWeight: '800', color: '#065F46' }}>090908080777</Text> (Rafi Nurrahman)
-                </Text>
-              </View>
-
-              {/* Stack Dua Stat Cards (Terkumpul & Tunggakan) */}
-              <View style={styles.bendaharaStatsStack}>
-                {/* Stat 1: Uang Terkumpul (Lunas) */}
-                <View style={styles.bendaharaStatCardLunas}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#DCFCE7' }]}>
-                        <ArrowDownLeft size={16} color="#047857" strokeWidth={2.5} />
-                      </View>
-                      <Text style={styles.bendaharaStatLabelGreen}>Uang Terkumpul (Lunas)</Text>
-                    </View>
-                    <View style={styles.bendaharaStatWargaPillGreen}>
-                      <Text style={styles.bendaharaStatWargaTextGreen}>
-                        {lunasTagihan.length} Warga Lunas
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.bendaharaStatAmountGreen}>
-                    {formatRupiah(totalLunasNominal)}
-                  </Text>
-                </View>
-
-                {/* Stat 2: Tunggakan IPL (Belum Bayar) */}
-                <View style={styles.bendaharaStatCardBelum}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#FEE2E2' }]}>
-                        <AlertCircle size={16} color="#DC2626" strokeWidth={2.5} />
-                      </View>
-                      <Text style={styles.bendaharaStatLabelRed}>Tunggakan IPL Warga</Text>
-                    </View>
-                    <View style={styles.bendaharaStatWargaPillRed}>
-                      <Text style={styles.bendaharaStatWargaTextRed}>
-                        {belumLunasTagihan.length} Warga Belum
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.bendaharaStatAmountRed}>
-                    {formatRupiah(totalBelumNominal)}
-                  </Text>
-                </View>
-              </View>
+        {/* ===================== BENDAHARA: KOKPIT KEUANGAN (REDESIGNED) ===================== */}
+        {!isResidentView && isBendahara && (
+          <View style={{ marginBottom: 12 }}>
+            {/* 1. KARTU UTAMA: COCKPIT EKSEKUTIF BENDAHARA */}
+            <View style={{ marginBottom: 18 }}>
+              <BendaharaHeroCard
+                saldoKas={saldoKas}
+                totalLunas={totalLunasNominal}
+                totalBelum={totalBelumNominal}
+                countLunas={lunasTagihan.length}
+                countBelum={belumLunasTagihan.length}
+                totalWarga={scopedWarga.length}
+                totalPemasukan={totalPemasukan}
+                totalPengeluaran={totalPengeluaran}
+                periodLabel={`${NAMA_BULAN[currentMonth - 1]} ${currentYear}`}
+                onPressManageBills={() => navigation.navigate('TagihanTab')}
+                onPressKas={() => navigation.navigate('Kas')}
+              />
             </View>
 
-            {/* 2. PERINGATAN VERIFIKASI PEMBAYARAN (STANDALONE PROMINENT CARD) */}
+            {/* 2. PERINGATAN VERIFIKASI (JIKA ADA PEMBAYARAN BUTUH ACC) */}
             {pendingCekCount > 0 && (
               <TouchableOpacity
-                style={styles.bendaharaAlertCard}
-                onPress={() => navigation.navigate('Tagihan')}
+                style={styles.rtAlertCard}
+                onPress={() => navigation.navigate('TagihanTab')}
                 activeOpacity={0.88}
               >
-                <View style={styles.bendaharaAlertIconWrap}>
-                  <AlertCircle size={22} color="#D97706" strokeWidth={2.4} />
+                <View style={styles.rtAlertIconWrap}>
+                  <AlertCircle size={20} color="#D97706" strokeWidth={2.4} />
+                  <View style={styles.rtAlertDot} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.bendaharaAlertPreTag}>PERLU VERIFIKASI SEGERA</Text>
-                  <Text style={styles.bendaharaAlertMainTitle}>
-                    {pendingCekCount} Pembayaran Baru Butuh ACC
-                  </Text>
-                  <Text style={styles.bendaharaAlertSubText}>
-                    Ketuk untuk memverifikasi mutasi bank & kwitansi
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.rtAlertTitle}>
+                      {pendingCekCount} Pembayaran Butuh Verifikasi
+                    </Text>
+                    <View style={styles.rtAlertPill}>
+                      <Text style={styles.rtAlertPillText}>BARU</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.rtAlertDesc} numberOfLines={1}>
+                    Ketuk untuk periksa bukti transfer & mutasi bank warga
                   </Text>
                 </View>
-                <View style={styles.bendaharaAlertChevronWrap}>
-                  <ChevronRight size={18} color="#D97706" strokeWidth={2.4} />
+                <View style={styles.rtAlertBtn}>
+                  <Text style={styles.rtAlertBtnText}>Periksa</Text>
+                  <ChevronRight size={14} color="#B45309" strokeWidth={2.2} />
                 </View>
               </TouchableOpacity>
             )}
 
-            {/* 3. MENU OPERASIONAL BENDAHARA */}
-            <View style={styles.bendaharaOperasionalSection}>
-              <View style={styles.bendaharaOperasionalHeaderRow}>
-                <Text style={styles.bendaharaSectionTitle}>Menu Operasional Bendahara</Text>
-                <Text style={styles.bendaharaSectionSub}>Modul manajemen kas & tagihan warga</Text>
+            {/* 3. AKSI CEPAT BENDAHARA (GRID BERSIH & PRESISI SEPERTI WARGA) */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeader}>
+                <Text style={styles.v2SectionTitle}>Aksi Cepat Bendahara</Text>
               </View>
+              <QuickActionGrid
+                actions={[
+                  {
+                    id: 'kas',
+                    label: 'Buku Kas',
+                    iconName: 'Wallet',
+                    bg: '#ECFDF5',
+                    iconColor: '#059669',
+                  },
+                  {
+                    id: 'verifikasi',
+                    label: 'Verifikasi IPL',
+                    iconName: 'Receipt',
+                    bg: '#FEF3C7',
+                    iconColor: '#D97706',
+                    badgeCount: pendingCekCount > 0 ? pendingCekCount : undefined,
+                  },
+                  {
+                    id: 'tagihan',
+                    label: 'Tagihan Warga',
+                    iconName: 'FileCheck',
+                    bg: '#EFF6FF',
+                    iconColor: '#2563EB',
+                  },
+                  {
+                    id: 'iuran',
+                    label: 'Iuran Kegiatan',
+                    iconName: 'PartyPopper',
+                    bg: '#FFF7ED',
+                    iconColor: '#EA580C',
+                  },
+                  {
+                    id: 'warga',
+                    label: 'Data Warga',
+                    iconName: 'Users',
+                    bg: '#F0FDFA',
+                    iconColor: '#0D9488',
+                  },
+                  {
+                    id: 'lapor',
+                    label: 'Aduan Warga',
+                    iconName: 'MessageSquareWarning',
+                    bg: '#FFFBEB',
+                    iconColor: '#D97706',
+                    badgeCount: aduanUnreadCount > 0 ? aduanUnreadCount : undefined,
+                  },
+                  {
+                    id: 'surat',
+                    label: 'Surat RT',
+                    iconName: 'FileText',
+                    bg: '#EEF2FF',
+                    iconColor: '#4F46E5',
+                    badgeCount: suratUnreadCount > 0 ? suratUnreadCount : undefined,
+                  },
+                  {
+                    id: 'darurat',
+                    label: 'Kontak Darurat',
+                    iconName: 'PhoneCall',
+                    bg: '#FFF1F2',
+                    iconColor: '#E11D48',
+                  },
+                ]}
+                onActionPress={(actionId) => {
+                  switch (actionId) {
+                    case 'kas':
+                      navigation.navigate('Kas');
+                      break;
+                    case 'verifikasi':
+                    case 'tagihan':
+                      navigation.navigate('TagihanTab');
+                      break;
+                    case 'iuran':
+                      navigation.navigate('Events');
+                      break;
+                    case 'warga':
+                      navigation.navigate('WargaList');
+                      break;
+                    case 'lapor':
+                      navigation.navigate('Pengaduan');
+                      break;
+                    case 'surat':
+                      navigation.navigate('Surat');
+                      break;
+                    case 'darurat':
+                      navigation.navigate('KontakDarurat');
+                      break;
+                  }
+                }}
+              />
+            </View>
 
-              <View style={styles.bendaharaActionList}>
-                {/* Action 1: Buku Kas */}
+            {/* 4. KAS WIDGET */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeaderWithAction}>
+                <Text style={styles.v2SectionTitle}>Kas Lingkungan</Text>
                 <TouchableOpacity
-                  style={styles.bendaharaActionCard}
                   onPress={() => navigation.navigate('Kas')}
-                  activeOpacity={0.85}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.v2SeeAllBtn}
                 >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                    <Wallet size={20} color="#047857" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Buku Kas Lingkungan</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Catat pengeluaran, belanja fasilitas & saldo kas
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                {/* Action 2: Verifikasi Tagihan */}
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Tagihan')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                    <Receipt size={20} color="#D97706" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.bendaharaActionCardTitle}>Verifikasi Tagihan</Text>
-                      {pendingCekCount > 0 && (
-                        <View style={styles.bendaharaActionBadgePending}>
-                          <Text style={styles.bendaharaActionBadgePendingText}>
-                            {pendingCekCount} baru
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Periksa mutasi transfer & bukti pembayaran warga
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                {/* Action 3: Iuran Kegiatan */}
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Events')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <Coins size={20} color="#2563EB" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Iuran Kegiatan & Fasum</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Kelola donasi, iuran insidental & kegiatan warga
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
+                  <Text style={styles.v2SeeAllText}>Buka Buku Kas</Text>
                 </TouchableOpacity>
               </View>
+              <KasWidget
+                balance={saldoKas || 48520000}
+                incomeMonth={totalPemasukan || 6120000}
+                expenseMonth={totalPengeluaran || 1080000}
+                onPress={() => navigation.navigate('Kas')}
+              />
+            </View>
+
+            {/* 5. AKTIVITAS KEUANGAN TERBARU */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeaderWithAction}>
+                <Text style={styles.v2SectionTitle}>Aktivitas Keuangan Terbaru</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Kas')}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.v2SeeAllBtn}
+                >
+                  <Text style={styles.v2SeeAllText}>Lihat Semua</Text>
+                </TouchableOpacity>
+              </View>
+
+              {displayedKas.length === 0 ? (
+                <AppEmptyState
+                  type="no_history"
+                  title="Belum Ada Transaksi Kas"
+                  description="Catatan arus kas lingkungan akan tampil di sini."
+                />
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {displayedKas.slice(0, 4).map((k) => {
+                    const isMasuk = k.tipe === 'Masuk' || k.tipe === 'Pemasukan'
+                    return (
+                      <TransactionListItem
+                        key={k.id || `kas-${Math.random()}`}
+                        title={k.keterangan || (isMasuk ? 'Pemasukan Kas' : 'Pengeluaran Kas')}
+                        subInfo={`${k.pj ? `PJ: ${k.pj} • ` : ''}${k.tanggal || 'Bulan Ini'}`}
+                        amount={k.nominal || 0}
+                        status={isMasuk ? 'paid' : 'unpaid'}
+                        category="kas"
+                        onPress={() => {
+                          setSelectedKasDetail(k)
+                          setKasDetailModalOpen(true)
+                        }}
+                      />
+                    )
+                  })}
+                </View>
+              )}
             </View>
           </View>
         )}
 
-        {/* ===================== PENGURUS: PUSAT OPERASIONAL & FASUM ===================== */}
-        {isPengurus && (
-          <View style={styles.bendaharaFinancialContainer}>
-            {/* 1. KARTU UTAMA: RINGKASAN OPERASIONAL PENGURUS */}
-            <View style={styles.bendaharaMainFinanceCard}>
-              <View style={styles.bendaharaFinanceHeaderRow}>
-                <View style={[styles.bendaharaFinanceIconCircle, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
-                  <ShieldCheck size={22} color="#2563EB" strokeWidth={2.2} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.bendaharaFinancePreTitle, { color: '#2563EB' }]}>OPERASIONAL LINGKUNGAN & FASUM</Text>
-                  <Text style={styles.bendaharaFinanceMainTitle}>Layanan Fasilitas & Warga</Text>
-                </View>
-                <View style={[styles.bendaharaRoleBadge, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
-                  <Text style={[styles.bendaharaRoleBadgeText, { color: '#2563EB' }]}>Pengurus</Text>
-                </View>
-              </View>
-
-              {/* Stack Stat Cards */}
-              <View style={styles.bendaharaStatsStack}>
-                {/* Stat 1: Aduan Warga */}
-                <View style={[styles.bendaharaStatCardLunas, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#FEE2E2' }]}>
-                        <MessageSquareText size={16} color="#DC2626" strokeWidth={2.5} />
-                      </View>
-                      <Text style={[styles.bendaharaStatLabelGreen, { color: '#DC2626' }]}>Aduan & Kendala Fasilitas</Text>
-                    </View>
-                    <View style={[styles.bendaharaStatWargaPillGreen, { backgroundColor: '#FEE2E2' }]}>
-                      <Text style={[styles.bendaharaStatWargaTextGreen, { color: '#B91C1C' }]}>
-                        {pengaduan?.filter(p => p.status !== 'Selesai')?.length || 0} Perlu Tindak
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.bendaharaStatAmountGreen, { color: '#991B1B' }]}>
-                    {pengaduan?.length || 0} Laporan Masuk
-                  </Text>
-                </View>
-
-                {/* Stat 2: Permohonan Surat */}
-                <View style={[styles.bendaharaStatCardBelum, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#DBEAFE' }]}>
-                        <FileText size={16} color="#2563EB" strokeWidth={2.5} />
-                      </View>
-                      <Text style={[styles.bendaharaStatLabelRed, { color: '#1E40AF' }]}>Permohonan Surat Warga</Text>
-                    </View>
-                    <View style={[styles.bendaharaStatWargaPillRed, { backgroundColor: '#DBEAFE' }]}>
-                      <Text style={[styles.bendaharaStatWargaTextRed, { color: '#1D4ED8' }]}>
-                        {surat?.filter(s => s.status === 'Menunggu')?.length || 0} Menunggu ACC
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.bendaharaStatAmountRed, { color: '#1E3A8A' }]}>
-                    {surat?.length || 0} Pengajuan
-                  </Text>
-                </View>
-
-                {/* Stat 3: Total Warga Terdata */}
-                <View style={[styles.bendaharaStatCardBelum, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#F1F5F9' }]}>
-                        <Users size={16} color="#475569" strokeWidth={2.5} />
-                      </View>
-                      <Text style={[styles.bendaharaStatLabelRed, { color: '#334155' }]}>Total Penduduk Lingkungan</Text>
-                    </View>
-                    <View style={[styles.bendaharaStatWargaPillRed, { backgroundColor: '#E2E8F0' }]}>
-                      <Text style={[styles.bendaharaStatWargaTextRed, { color: '#475569' }]}>
-                        Terverifikasi
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.bendaharaStatAmountRed, { color: '#0F172A' }]}>
-                    {scopedWarga?.length || 0} Jiwa Warga
-                  </Text>
-                </View>
-              </View>
+        {/* ===================== PENGURUS: KOKPIT FASUM & LAYANAN (REDESIGNED) ===================== */}
+        {!isResidentView && isPengurus && (
+          <View style={{ marginBottom: 12 }}>
+            {/* 1. KARTU UTAMA: COCKPIT EKSEKUTIF PENGURUS */}
+            <View style={{ marginBottom: 18 }}>
+              <PengurusHeroCard
+                totalAduan={pengaduan?.length || 0}
+                pendingAduanCount={pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0}
+                totalSurat={surat?.length || 0}
+                pendingSuratCount={surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0}
+                totalWarga={scopedWarga.length}
+                periodLabel={`${NAMA_BULAN[currentMonth - 1]} ${currentYear}`}
+                onPressPengaduan={() => navigation.navigate('Pengaduan')}
+                onPressSurat={() => navigation.navigate('Surat')}
+              />
             </View>
 
-            {/* 2. MENU OPERASIONAL PENGURUS */}
-            <View style={styles.bendaharaOperasionalSection}>
-              <View style={styles.bendaharaOperasionalHeaderRow}>
-                <Text style={styles.bendaharaSectionTitle}>Menu Layanan Pengurus</Text>
-                <Text style={styles.bendaharaSectionSub}>Akses cepat penanganan aduan, surat & kegiatan</Text>
-              </View>
+            {/* 2. PERINGATAN LAYANAN (JIKA ADA ADUAN / SURAT BARU) */}
+            {((pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0 || (surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0) > 0) && (
+              <TouchableOpacity
+                style={styles.rtAlertCard}
+                onPress={() => {
+                  const hasAduan = (pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0
+                  navigation.navigate(hasAduan ? 'Pengaduan' : 'Surat')
+                }}
+                activeOpacity={0.88}
+              >
+                <View style={[styles.rtAlertIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <AlertCircle size={20} color="#2563EB" strokeWidth={2.4} />
+                  <View style={[styles.rtAlertDot, { backgroundColor: '#2563EB' }]} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.rtAlertTitle}>
+                      {pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0} Aduan & {surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0} Surat Baru
+                    </Text>
+                    <View style={[styles.rtAlertPill, { backgroundColor: '#DBEAFE' }]}>
+                      <Text style={[styles.rtAlertPillText, { color: '#1D4ED8' }]}>TINDAKAN</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.rtAlertDesc} numberOfLines={1}>
+                    Ketuk untuk menindaklanjuti kendala fasum dan surat warga
+                  </Text>
+                </View>
+                <View style={[styles.rtAlertBtn, { backgroundColor: '#EFF6FF' }]}>
+                  <Text style={[styles.rtAlertBtnText, { color: '#1D4ED8' }]}>Proses</Text>
+                  <ChevronRight size={14} color="#1D4ED8" strokeWidth={2.2} />
+                </View>
+              </TouchableOpacity>
+            )}
 
-              <View style={styles.bendaharaActionList}>
+            {/* 3. AKSI CEPAT PENGURUS (GRID BERSIH & PRESISI SEPERTI WARGA) */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeader}>
+                <Text style={styles.v2SectionTitle}>Aksi Cepat Pengurus</Text>
+              </View>
+              <QuickActionGrid
+                actions={[
+                  {
+                    id: 'lapor',
+                    label: 'Aduan Fasum',
+                    iconName: 'MessageSquareWarning',
+                    bg: '#FEE2E2',
+                    iconColor: '#DC2626',
+                    badgeCount: (pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0 ? pengaduan.filter((p) => p.status !== 'Selesai').length : undefined,
+                  },
+                  {
+                    id: 'surat',
+                    label: 'Surat Warga',
+                    iconName: 'FileCheck',
+                    bg: '#EFF6FF',
+                    iconColor: '#2563EB',
+                    badgeCount: (surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0) > 0 ? surat.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan').length : undefined,
+                  },
+                  {
+                    id: 'satpam',
+                    label: 'Jadwal Satpam',
+                    iconName: 'ShieldCheck',
+                    bg: '#ECFDF5',
+                    iconColor: '#059669',
+                  },
+                  {
+                    id: 'denah',
+                    label: 'Peta Fasum',
+                    iconName: 'Compass',
+                    bg: '#F0F9FF',
+                    iconColor: '#0284C7',
+                  },
+                  {
+                    id: 'acara',
+                    label: 'Acara Warga',
+                    iconName: 'PartyPopper',
+                    bg: '#FFF7ED',
+                    iconColor: '#EA580C',
+                  },
+                  {
+                    id: 'kas',
+                    label: 'Buku Kas',
+                    iconName: 'Wallet',
+                    bg: '#F0FDFA',
+                    iconColor: '#0D9488',
+                  },
+                  {
+                    id: 'warga',
+                    label: 'Data Warga',
+                    iconName: 'Users',
+                    bg: '#EEF2FF',
+                    iconColor: '#4F46E5',
+                  },
+                  {
+                    id: 'darurat',
+                    label: 'Kontak Darurat',
+                    iconName: 'PhoneCall',
+                    bg: '#FFF1F2',
+                    iconColor: '#E11D48',
+                  },
+                ]}
+                onActionPress={(actionId) => {
+                  switch (actionId) {
+                    case 'lapor':
+                      navigation.navigate('Pengaduan');
+                      break;
+                    case 'surat':
+                      navigation.navigate('Surat');
+                      break;
+                    case 'satpam':
+                      navigation.navigate('JadwalSatpam');
+                      break;
+                    case 'denah':
+                      navigation.navigate('PetaWarga');
+                      break;
+                    case 'acara':
+                      navigation.navigate('Events');
+                      break;
+                    case 'kas':
+                      navigation.navigate('Kas');
+                      break;
+                    case 'warga':
+                      navigation.navigate('WargaList');
+                      break;
+                    case 'darurat':
+                      navigation.navigate('KontakDarurat');
+                      break;
+                  }
+                }}
+              />
+            </View>
+
+            {/* 4. KAS WIDGET */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeaderWithAction}>
+                <Text style={styles.v2SectionTitle}>Kas Lingkungan</Text>
                 <TouchableOpacity
-                  style={styles.bendaharaActionCard}
+                  onPress={() => navigation.navigate('Kas')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.v2SeeAllBtn}
+                >
+                  <Text style={styles.v2SeeAllText}>Buka Buku Kas</Text>
+                </TouchableOpacity>
+              </View>
+              <KasWidget
+                balance={saldoKas || 48520000}
+                incomeMonth={totalPemasukan || 6120000}
+                expenseMonth={totalPengeluaran || 1080000}
+                onPress={() => navigation.navigate('Kas')}
+              />
+            </View>
+
+            {/* 5. ADUAN & KEGIATAN TERKINI */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.v2SectionHeaderWithAction}>
+                <Text style={styles.v2SectionTitle}>Aduan & Kendala Terkini</Text>
+                <TouchableOpacity
                   onPress={() => navigation.navigate('Pengaduan')}
-                  activeOpacity={0.85}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.v2SeeAllBtn}
                 >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#FEF2F2' }]}>
-                    <MessageSquareText size={20} color="#DC2626" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Layanan Aduan Fasilitas</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Tindak lanjuti kendala lampu, sampah & fasilitas umum
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Surat')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <FileText size={20} color="#2563EB" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Pelayanan Surat Pengantar</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Penerbitan surat domisili, keterangan & pengantar RT/RW
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Events')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                    <Coins size={20} color="#D97706" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Fasum & Kegiatan Warga</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Kelola jadwal lomba, kerja bakti & perayaan warga
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('PetaWarga')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                    <Compass size={20} color="#475569" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Denah & Peta Titik Fasum</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Pemetaan lokasi Balai RT, Pos Ronda & titik CCTV
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
+                  <Text style={styles.v2SeeAllText}>Lihat Semua</Text>
                 </TouchableOpacity>
               </View>
+
+              {(pengaduan || []).length === 0 ? (
+                <AppEmptyState
+                  type="no_history"
+                  title="Belum Ada Aduan Warga"
+                  description="Laporan fasilitas dan aspirasi warga akan muncul di sini."
+                />
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {(pengaduan || []).slice(0, 3).map((p) => (
+                    <AppCard
+                      key={p.id || `aduan-${Math.random()}`}
+                      style={styles.eventCard}
+                      onPress={() => navigation.navigate('Pengaduan')}
+                    >
+                      <View style={styles.eventHeader}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{p.judul || p.kategori || 'Aduan Warga'}</Text>
+                        <AppBadge status={p.status} label={p.status} />
+                      </View>
+                      <Text style={styles.eventDesc} numberOfLines={2}>
+                        {p.deskripsi || p.isi || 'Laporan kendala fasilitas umum.'}
+                      </Text>
+                    </AppCard>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -1630,8 +1750,8 @@ export default function DashboardScreen({ navigation }) {
           </AppCard>
         )}
 
-        {/* ===================== RINGKASAN KAS LINGKUNGAN (PENGURUS & ADMIN) ===================== */}
-        {!isResidentView && !isRT && !isRW && (
+        {/* ===================== RINGKASAN KAS LINGKUNGAN (ADMIN IT ONLY) ===================== */}
+        {!isResidentView && !isRT && !isRW && !isBendahara && !isPengurus && (
           <View style={{ marginTop: 12, marginBottom: 24 }}>
             <View style={styles.v2SectionHeaderWithAction}>
               <Text style={styles.v2SectionTitle}>Kas Lingkungan</Text>
@@ -1652,8 +1772,8 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* Pengumuman Terkini (Khusus Tampilan Pengurus Selain Bendahara, RT & RW) */}
-        {!isResidentView && !isBendahara && !isRT && !isRW && (
+        {/* Pengumuman Terkini (Khusus Tampilan Admin IT Selain Bendahara, Pengurus, RT & RW) */}
+        {!isResidentView && !isBendahara && !isPengurus && !isRT && !isRW && (
           <View style={styles.announcementSection}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Pengumuman Terkini</Text>
