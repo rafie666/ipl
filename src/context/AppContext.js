@@ -100,14 +100,9 @@ export function AppProvider({ children }) {
             rtRw: 'RT 01 / RW 01'
           }
         }
-        if (initialConfig?.rekeningRw !== 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman' || initialConfig?.rekeningBank !== 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman') {
-          initialConfig = {
-            ...initialConfig,
-            rekeningRw: 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman',
-            rekeningBank: 'Bank Transfer Sandbox 090908080777 a.n Rafi Nurrahman'
-          }
+        if (JSON.stringify(initialConfig) !== JSON.stringify(initial.config)) {
+          await saveStorageItem(STORAGE_KEYS.CONFIG, initialConfig)
         }
-        await saveStorageItem(STORAGE_KEYS.CONFIG, initialConfig)
         setConfig(initialConfig)
 
         // Normalisasi tagihan jika masih ada yang bertuliskan RW 01 - RW 05
@@ -178,8 +173,12 @@ export function AppProvider({ children }) {
           return u
         })
 
-        await saveStorageItem(STORAGE_KEYS.WARGA, sanitizedWarga)
-        await saveStorageItem(STORAGE_KEYS.USERS, sanitizedUsers)
+        if (JSON.stringify(sanitizedWarga) !== JSON.stringify(initial.warga || [])) {
+          await saveStorageItem(STORAGE_KEYS.WARGA, sanitizedWarga)
+        }
+        if (JSON.stringify(sanitizedUsers) !== JSON.stringify(initial.users || [])) {
+          await saveStorageItem(STORAGE_KEYS.USERS, sanitizedUsers)
+        }
 
         // Otomatisasi & Catch-up Tagihan Bulanan (Sesuai tanggal hari ini di Jakarta)
         let finalTagihan = [...sanitizedTagihan]
@@ -388,23 +387,37 @@ export function AppProvider({ children }) {
     init()
   }, [])
 
-  // Realtime Supabase listener
+  // Realtime Supabase listener (Debounced & Loop-Protected)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
 
+    let debounceTimer = null
+
+    const handleRealtimeChange = (payload) => {
+      // Abaikan update config/heartbeat internal agar tidak terjadi cascade re-fetch
+      if (payload?.table === STORAGE_KEYS.CONFIG) {
+        return
+      }
+
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        refreshData()
+      }, 1500)
+    }
+
     const channel = supabase
       .channel('mobile_realtime_all')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        refreshData()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeChange)
       .subscribe()
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
     }
   }, [])
 
   const refreshData = async () => {
+    if (refreshing) return
     setRefreshing(true)
     try {
       const res = await syncAllFromSupabase()
@@ -435,8 +448,6 @@ export function AppProvider({ children }) {
         if (res.notifications?.length) setNotifications(res.notifications)
         if (res.auditLogs?.length) setAuditLogs(res.auditLogs)
       }
-      // Evaluasi otomatisasi penerbitan tagihan jika masuk periode baru
-      await triggerManualBillingCatchUp()
     } catch (e) {
       console.warn('Refresh error:', e)
     } finally {
@@ -463,7 +474,7 @@ export function AppProvider({ children }) {
       subscription?.remove?.()
       clearInterval(intervalTimer)
     }
-  }, [config, tagihan, warga, jenisIuran, rts, notifications])
+  }, [])
 
   // Auth Functions
   const login = async (usernameOrObj, maybePassword) => {
