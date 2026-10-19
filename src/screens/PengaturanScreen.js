@@ -101,6 +101,7 @@ export default function PengaturanScreen({ navigation }) {
     addJenisIuran,
     updateJenisIuran,
     toggleJenisIuran,
+    deleteJenisIuran,
     handleResetData,
     updateWarga,
     updateCurrentUser,
@@ -335,6 +336,13 @@ export default function PengaturanScreen({ navigation }) {
   const [newNamaIuran, setNewNamaIuran] = useState('')
   const [newNominalIuran, setNewNominalIuran] = useState('')
   const [newKetIuran, setNewKetIuran] = useState('')
+
+  // Edit Iuran State
+  const [modalEditIuran, setModalEditIuran] = useState(false)
+  const [editIuranId, setEditIuranId] = useState(null)
+  const [editNamaIuran, setEditNamaIuran] = useState('')
+  const [editNominalIuran, setEditNominalIuran] = useState('')
+  const [editKetIuran, setEditKetIuran] = useState('')
 
   // ==============================================================
   // 5. STATE FOR DATABASE & ADMIN AUTH
@@ -625,6 +633,21 @@ export default function PengaturanScreen({ navigation }) {
     setNewKetIuran('')
     setModalAddIuran(false)
     Alert.alert('Sukses', 'Pos iuran baru berhasil ditambahkan!')
+  }
+
+  const handleSimpanEditIuran = async () => {
+    if (!editNamaIuran.trim() || !editNominalIuran) {
+      Alert.alert('Perhatian', 'Nama pos dan nominal iuran wajib diisi!')
+      return
+    }
+    await updateJenisIuran(editIuranId, {
+      nama: editNamaIuran.trim(),
+      nominal: Number(editNominalIuran) || 0,
+      keterangan: editKetIuran.trim()
+    })
+    setModalEditIuran(false)
+    setEditIuranId(null)
+    Alert.alert('Sukses', 'Pos iuran berhasil diperbarui!')
   }
 
   // ==========================================
@@ -1463,9 +1486,9 @@ export default function PengaturanScreen({ navigation }) {
                 </Text>
                 <View style={styles.scopeButtonsRow}>
                   {[
-                    { key: 'ALL', label: 'Semua (RT & RW)', desc: 'Iuran RT dan Fasum RW' },
-                    { key: 'RT', label: 'Hanya RT', desc: 'Kas Lingkungan RT saja' },
-                    { key: 'RW', label: 'Hanya RW', desc: 'Kas Fasum RW saja' }
+                    { key: 'ALL', label: 'Semua RT & RW', desc: 'Iuran RT + Fasum RW' },
+                    { key: 'RT', label: 'Hanya RT', desc: 'Kas RT saja' },
+                    { key: 'RW', label: 'Hanya RW', desc: 'Kas RW saja' }
                   ].map((sc) => {
                     const isSelected = billingScope === sc.key
                     return (
@@ -1475,10 +1498,10 @@ export default function PengaturanScreen({ navigation }) {
                         onPress={() => setBillingScope(sc.key)}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.scopeBtnTitle, isSelected && styles.scopeBtnTitleActive]}>
+                        <Text style={[styles.scopeBtnTitle, isSelected && styles.scopeBtnTitleActive]} numberOfLines={1}>
                           {sc.label}
                         </Text>
-                        <Text style={[styles.scopeBtnDesc, isSelected && styles.scopeBtnDescActive]}>
+                        <Text style={[styles.scopeBtnDesc, isSelected && styles.scopeBtnDescActive]} numberOfLines={2}>
                           {sc.desc}
                         </Text>
                       </TouchableOpacity>
@@ -1595,6 +1618,40 @@ export default function PengaturanScreen({ navigation }) {
                         trackColor={{ false: colors.border, true: colors.primary }}
                         thumbColor={colors.white}
                       />
+                      {isAdmin && (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditIuranId(item.id)
+                              setEditNamaIuran(item.nama)
+                              setEditNominalIuran(String(item.nominal))
+                              setEditKetIuran(item.keterangan || '')
+                              setModalEditIuran(true)
+                            }}
+                            style={styles.miniEditBtn}
+                          >
+                            <Edit3 size={12} color={colors.primary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Alert.alert('Hapus Pos Iuran', `Hapus "${item.nama}"?`, [
+                                { text: 'Batal', style: 'cancel' },
+                                {
+                                  text: 'Hapus',
+                                  style: 'destructive',
+                                  onPress: async () => {
+                                    await deleteJenisIuran(item.id)
+                                    Alert.alert('Sukses', 'Pos iuran dihapus.')
+                                  }
+                                }
+                              ])
+                            }}
+                            style={styles.miniDeleteBtn}
+                          >
+                            <Trash2 size={12} color={colors.danger} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   </View>
                 ))}
@@ -1661,6 +1718,7 @@ export default function PengaturanScreen({ navigation }) {
                     const isRW = b.owner_type === 'RW'
                     const rtObj = (rts || []).find((r) => r.id === b.owner_id)
                     const ownerLabel = isRW ? 'Kas RW 15' : rtObj?.name || b.owner_id
+                    const canEdit = isAdmin || (isRW && b.owner_type === 'RW') || (isRT && b.owner_type === 'RT' && b.owner_id === currentRT?.id)
 
                     return (
                       <View key={b.id} style={styles.accountCardItem}>
@@ -1676,12 +1734,14 @@ export default function PengaturanScreen({ navigation }) {
                               <Text style={styles.primaryBadgeText}>UTAMA</Text>
                             </View>
                           ) : (
-                            <TouchableOpacity
-                              onPress={() => handleSetPrimaryBank(b)}
-                              style={styles.setPrimaryLink}
-                            >
-                              <Text style={styles.setPrimaryLinkText}>Set Utama</Text>
-                            </TouchableOpacity>
+                            canEdit && (
+                              <TouchableOpacity
+                                onPress={() => handleSetPrimaryBank(b)}
+                                style={styles.setPrimaryLink}
+                              >
+                                <Text style={styles.setPrimaryLinkText}>Set Utama</Text>
+                              </TouchableOpacity>
+                            )
                           )}
                         </View>
 
@@ -1691,43 +1751,49 @@ export default function PengaturanScreen({ navigation }) {
                           <Text style={styles.accountHolderText}>a.n {b.account_holder}</Text>
                         </View>
 
-                        <View style={styles.accountActionsRow}>
-                          <TouchableOpacity
-                            onPress={() => handleOpenEditBank(b)}
-                            style={styles.editActionBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Edit3 size={13} color={colors.primary} style={{ marginRight: 4 }} />
-                            <Text style={styles.editActionText}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleHapusBank(b)}
-                            style={styles.deleteActionBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Trash2 size={13} color={colors.danger} style={{ marginRight: 4 }} />
-                            <Text style={styles.deleteActionText}>Hapus</Text>
-                          </TouchableOpacity>
-                        </View>
+                        {canEdit && (
+                          <View style={styles.accountActionsRow}>
+                            <TouchableOpacity
+                              onPress={() => handleOpenEditBank(b)}
+                              style={styles.editActionBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Edit3 size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                              <Text style={styles.editActionText}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleHapusBank(b)}
+                              style={styles.deleteActionBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Trash2 size={13} color={colors.danger} style={{ marginRight: 4 }} />
+                              <Text style={styles.deleteActionText}>Hapus</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     )
                   })}
                 </View>
               )}
 
-              <AppButton
-                title="+ Tambah Rekening Bank"
-                onPress={() => {
-                  setNewBankOwnerType('RT')
-                  setNewBankRtId('rt-1')
-                  setNewBankName('BCA')
-                  setNewAccNumber('')
-                  setNewAccHolder('')
-                  setNewIsPrimaryBank(false)
-                  setModalAddBank(true)
-                }}
-                variant="secondary"
-                size="md"
+              {(isAdmin || (isRW && rekeningScope === 'RW') || (isRT && (rekeningScope === 'RT 01' || rekeningScope === 'RT 02' || rekeningScope === 'RT 03'))) && (
+                <AppButton
+                  title="+ Tambah Rekening Bank"
+                  onPress={() => {
+                    setNewBankOwnerType(isRW || rekeningScope === 'RW' ? 'RW' : 'RT')
+                    setNewBankRtId(currentRT?.id || 'rt-1')
+                    setNewBankName('BCA')
+                    setNewAccNumber('')
+                    setNewAccHolder('')
+                    setNewIsPrimaryBank(false)
+                    setModalAddBank(true)
+                  }}
+                  variant="secondary"
+                  size="md"
+                  style={{ marginTop: spacing.md }}
+                />
+              )}
                 style={{ marginTop: spacing.md }}
               />
             </AppCard>
@@ -1757,6 +1823,7 @@ export default function PengaturanScreen({ navigation }) {
                     const rtObj = (rts || []).find((r) => r.id === q.owner_id)
                     const ownerLabel = isRW ? 'Kas RW 15' : rtObj?.name || q.owner_id
                     const qrUri = q.image_url || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=QRIS_${encodeURIComponent(q.qris_name)}`
+                    const canEdit = isAdmin || (isRW && q.owner_type === 'RW') || (isRT && q.owner_type === 'RT' && q.owner_id === currentRT?.id)
 
                     return (
                       <View key={q.id} style={styles.accountCardItem}>
@@ -1772,12 +1839,14 @@ export default function PengaturanScreen({ navigation }) {
                               <Text style={styles.primaryBadgeText}>UTAMA</Text>
                             </View>
                           ) : (
-                            <TouchableOpacity
-                              onPress={() => handleSetPrimaryQris(q)}
-                              style={styles.setPrimaryLink}
-                            >
-                              <Text style={styles.setPrimaryLinkText}>Set Utama</Text>
-                            </TouchableOpacity>
+                            canEdit && (
+                              <TouchableOpacity
+                                onPress={() => handleSetPrimaryQris(q)}
+                                style={styles.setPrimaryLink}
+                              >
+                                <Text style={styles.setPrimaryLinkText}>Set Utama</Text>
+                              </TouchableOpacity>
+                            )
                           )}
                         </View>
 
@@ -1804,53 +1873,57 @@ export default function PengaturanScreen({ navigation }) {
                           </View>
                         </TouchableOpacity>
 
-                        <View style={styles.accountActionsRow}>
-                          <TouchableOpacity
-                            onPress={() => handlePreviewQris(q)}
-                            style={styles.viewActionBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Eye size={13} color={colors.primary} style={{ marginRight: 4 }} />
-                            <Text style={styles.viewActionText}>Lihat QR</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleOpenEditQris(q)}
-                            style={styles.editActionBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Edit3 size={13} color={colors.primary} style={{ marginRight: 4 }} />
-                            <Text style={styles.editActionText}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleHapusQris(q)}
-                            style={styles.deleteActionBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Trash2 size={13} color={colors.danger} style={{ marginRight: 4 }} />
-                            <Text style={styles.deleteActionText}>Hapus</Text>
-                          </TouchableOpacity>
-                        </View>
+                        {canEdit && (
+                          <View style={styles.accountActionsRow}>
+                            <TouchableOpacity
+                              onPress={() => handlePreviewQris(q)}
+                              style={styles.viewActionBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Eye size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                              <Text style={styles.viewActionText}>Lihat QR</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleOpenEditQris(q)}
+                              style={styles.editActionBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Edit3 size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                              <Text style={styles.editActionText}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleHapusQris(q)}
+                              style={styles.deleteActionBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Trash2 size={13} color={colors.danger} style={{ marginRight: 4 }} />
+                              <Text style={styles.deleteActionText}>Hapus</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     )
                   })}
                 </View>
               )}
 
-              <AppButton
-                title="+ Tambah Akun QRIS"
-                onPress={() => {
-                  setNewQrisOwnerType('RT')
-                  setNewQrisRtId('rt-1')
-                  setNewQrisName('')
-                  setNewQrisNmid('')
-                  setNewQrisImageUrl('')
-                  setNewIsPrimaryQris(false)
-                  setModalAddQris(true)
-                }}
-                variant="secondary"
-                size="md"
-                style={{ marginTop: spacing.md }}
-              />
+              {(isAdmin || (isRW && rekeningScope === 'RW') || (isRT && (rekeningScope === 'RT 01' || rekeningScope === 'RT 02' || rekeningScope === 'RT 03'))) && (
+                <AppButton
+                  title="+ Tambah Akun QRIS"
+                  onPress={() => {
+                    setNewQrisOwnerType(isRW || rekeningScope === 'RW' ? 'RW' : 'RT')
+                    setNewQrisRtId(currentRT?.id || 'rt-1')
+                    setNewQrisName('')
+                    setNewQrisNmid('')
+                    setNewQrisImageUrl('')
+                    setNewIsPrimaryQris(false)
+                    setModalAddQris(true)
+                  }}
+                  variant="secondary"
+                  size="md"
+                  style={{ marginTop: spacing.md }}
+                />
+              )}
             </AppCard>
           </View>
         )}
@@ -1871,69 +1944,80 @@ export default function PengaturanScreen({ navigation }) {
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nama Perumahan / Lingkungan</Text>
-                <TextInput
-                  style={styles.input}
-                  value={rwNamaLingkungan}
-                  onChangeText={setRwNamaLingkungan}
-                  placeholder="Perumahan Griya Indah"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
+              {(isAdmin || isRW) ? (
+                <>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Nama Perumahan / Lingkungan</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={rwNamaLingkungan}
+                      onChangeText={setRwNamaLingkungan}
+                      placeholder="Perumahan Griya Indah"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
 
-              <View style={styles.rowTwoCols}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
-                  <Text style={styles.label}>Nomor RW</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={rwNomor}
-                    onChangeText={setRwNomor}
-                    placeholder="RW 15"
-                    placeholderTextColor={colors.textMuted}
+                  <View style={styles.rowTwoCols}>
+                    <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                      <Text style={styles.label}>Nomor RW</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={rwNomor}
+                        onChangeText={setRwNomor}
+                        placeholder="RW 15"
+                        placeholderTextColor={colors.textMuted}
+                      />
+                    </View>
+                    <View style={[styles.formGroup, { flex: 1, marginLeft: spacing.sm }]}>
+                      <Text style={styles.label}>Nama Ketua RW</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={rwKetua}
+                        onChangeText={setRwKetua}
+                        placeholder="Bpk. H. Rahmat"
+                        placeholderTextColor={colors.textMuted}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>No. WhatsApp Pengurus RW</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={rwKontak}
+                      onChangeText={setRwKontak}
+                      placeholder="081122334455"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Info Rekening Kas Bersama RW</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={rwRekening}
+                      onChangeText={setRwRekening}
+                      placeholder="BCA 7788990011 a.n Kas RW 15"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+
+                  <AppButton
+                    title="Simpan Profil RW"
+                    onPress={handleSimpanRw}
+                    icon={<Save size={16} color={colors.white} />}
+                    style={{ marginTop: spacing.md }}
                   />
+                </>
+              ) : (
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Lock size={32} color={colors.textSecondary} style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center' }}>
+                    Profil RW hanya dapat diedit oleh Admin IT atau Ketua RW
+                  </Text>
                 </View>
-                <View style={[styles.formGroup, { flex: 1, marginLeft: spacing.sm }]}>
-                  <Text style={styles.label}>Nama Ketua RW</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={rwKetua}
-                    onChangeText={setRwKetua}
-                    placeholder="Bpk. H. Rahmat"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>No. WhatsApp Pengurus RW</Text>
-                <TextInput
-                  style={styles.input}
-                  value={rwKontak}
-                  onChangeText={setRwKontak}
-                  placeholder="081122334455"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Info Rekening Kas Bersama RW</Text>
-                <TextInput
-                  style={styles.input}
-                  value={rwRekening}
-                  onChangeText={setRwRekening}
-                  placeholder="BCA 7788990011 a.n Kas RW 15"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-
-              <AppButton
-                title="Simpan Profil RW"
-                onPress={handleSimpanRw}
-                icon={<Save size={16} color={colors.white} />}
-                style={{ marginTop: spacing.md }}
-              />
+              )}
             </AppCard>
           </View>
         )}
@@ -1959,6 +2043,9 @@ export default function PengaturanScreen({ navigation }) {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rtSelectorScroll}>
                   {(rts || []).map((r) => {
                     const isSel = selectedRtId === r.id
+                    const canView = isAdmin || isRW || (isRT && r.id === currentRT?.id)
+                    if (!canView) return null
+
                     return (
                       <TouchableOpacity
                         key={r.id}
@@ -1985,27 +2072,29 @@ export default function PengaturanScreen({ navigation }) {
                 </ScrollView>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nama Ketua {activeRt?.name}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={rtKetua}
-                  onChangeText={setRtKetua}
-                  placeholder="Contoh: Bpk. Syahdan"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
+              {(isAdmin || isRW || (isRT && activeRt?.id === currentRT?.id)) ? (
+                <>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Nama Ketua {activeRt?.name}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={rtKetua}
+                      onChangeText={setRtKetua}
+                      placeholder="Contoh: Bpk. Syahdan"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nama Bendahara (Tanda Tangan Struk)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={rtBendahara}
-                  onChangeText={setRtBendahara}
-                  placeholder="Contoh: Ibu Siti Aminah"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Nama Bendahara (Tanda Tangan Struk)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={rtBendahara}
+                      onChangeText={setRtBendahara}
+                      placeholder="Contoh: Ibu Siti Aminah"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Nomor WhatsApp {activeRt?.name}</Text>
@@ -2100,6 +2189,15 @@ export default function PengaturanScreen({ navigation }) {
                   </TouchableOpacity>
                 )}
               </View>
+                </>
+              ) : (
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Lock size={32} color={colors.textSecondary} style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center' }}>
+                    Data {activeRt?.name} hanya dapat diedit oleh Admin IT atau Ketua RW
+                  </Text>
+                </View>
+              )}
             </AppCard>
           </View>
         )}
@@ -2431,6 +2529,7 @@ export default function PengaturanScreen({ navigation }) {
       </ScrollView>
 
       {/* MODAL TAMBAH POS IURAN */}
+      {/* MODAL: TAMBAH POS IURAN */}
       <AppModal
         visible={modalAddIuran}
         onClose={() => setModalAddIuran(false)}
@@ -2444,7 +2543,7 @@ export default function PengaturanScreen({ navigation }) {
           <TextInput
             style={styles.input}
             value={newNamaIuran}
-            onChangeText={setNamaIuran => setNewNamaIuran(setNamaIuran)}
+            onChangeText={setNewNamaIuran}
             placeholder="Contoh: Iuran Kebersihan"
             placeholderTextColor={colors.textMuted}
           />
@@ -2455,7 +2554,7 @@ export default function PengaturanScreen({ navigation }) {
           <TextInput
             style={styles.input}
             value={newNominalIuran}
-            onChangeText={setNominal => setNewNominalIuran(setNominal)}
+            onChangeText={setNewNominalIuran}
             placeholder="35000"
             placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
@@ -2467,7 +2566,54 @@ export default function PengaturanScreen({ navigation }) {
           <TextInput
             style={styles.input}
             value={newKetIuran}
-            onChangeText={setKet => setNewKetIuran(setKet)}
+            onChangeText={setNewKetIuran}
+            placeholder="Pengangkutan sampah 3x seminggu"
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
+      </AppModal>
+
+      {/* MODAL: EDIT POS IURAN */}
+      <AppModal
+        visible={modalEditIuran}
+        onClose={() => {
+          setModalEditIuran(false)
+          setEditIuranId(null)
+        }}
+        title="Edit Pos Iuran"
+        subtitle="Perbarui tarif atau keterangan pos iuran"
+        primaryActionLabel="Simpan Perubahan"
+        onPrimaryAction={handleSimpanEditIuran}
+      >
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Nama Pos Iuran *</Text>
+          <TextInput
+            style={styles.input}
+            value={editNamaIuran}
+            onChangeText={setEditNamaIuran}
+            placeholder="Contoh: Iuran Kebersihan"
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Nominal per Bulan (Rp) *</Text>
+          <TextInput
+            style={styles.input}
+            value={editNominalIuran}
+            onChangeText={setEditNominalIuran}
+            placeholder="35000"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Keterangan Pos (Opsional)</Text>
+          <TextInput
+            style={styles.input}
+            value={editKetIuran}
+            onChangeText={setEditKetIuran}
             placeholder="Pengangkutan sampah 3x seminggu"
             placeholderTextColor={colors.textMuted}
           />
@@ -3213,6 +3359,24 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   itemActionCol: {
+    alignItems: 'flex-end'
+  },
+  miniEditBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  miniDeleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
     alignItems: 'flex-end'
   },
   scopeFilterWrap: {

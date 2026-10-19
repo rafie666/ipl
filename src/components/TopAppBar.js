@@ -567,10 +567,13 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           <UserPlus size={14} color="#1D4ED8" />
                           <Text style={[styles.notifBadgeTextIpl, { color: '#1D4ED8' }]}>Warga Baru</Text>
                         </View>
-                        <View style={{ flex: 1, marginLeft: 6 }}>
-                          <Text style={styles.notifWargaName}>{pw.nama}</Text>
-                          <Text style={styles.notifWargaBlok}>
-                            Blok {pw.blok || 'A'}/{pw.noRumah || '-'} • {rtObj.name || 'RT 01'} • HP: {pw.noHp || '-'}
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                          <Text style={styles.notifWargaName} numberOfLines={1}>{pw.nama}</Text>
+                          <Text style={styles.notifWargaBlok} numberOfLines={1}>
+                            Blok {pw.blok || 'A'}/{pw.noRumah || '-'} • {rtObj.name || 'RT 01'}
+                          </Text>
+                          <Text style={[styles.notifWargaBlok, { fontSize: 11, marginTop: 1 }]} numberOfLines={1}>
+                            HP: {pw.noHp || '-'}
                           </Text>
                         </View>
                       </View>
@@ -589,7 +592,7 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           onPress={() => handleApproveWarga(pw.id, pw.nama)}
                         >
                           <Check size={13} color={colors.white} />
-                          <Text style={styles.notifApproveBtnText}>Setujui & Aktifkan</Text>
+                          <Text style={styles.notifApproveBtnText}>Setujui</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -608,10 +611,10 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           <Receipt size={14} color="#B45309" />
                           <Text style={styles.notifBadgeTextIpl}>IPL</Text>
                         </View>
-                        <View style={{ flex: 1, marginLeft: 6 }}>
-                          <Text style={styles.notifWargaName}>{targetW.nama || t.namaWarga || 'Warga'}</Text>
-                          <Text style={styles.notifWargaBlok}>
-                            Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'} • Periode {bulanNama} {t.tahun}
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                          <Text style={styles.notifWargaName} numberOfLines={1}>{targetW.nama || t.namaWarga || 'Warga'}</Text>
+                          <Text style={styles.notifWargaBlok} numberOfLines={1}>
+                            Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'} • {bulanNama} {t.tahun}
                           </Text>
                         </View>
                         <Text style={styles.notifNominal}>{formatRupiah(t.total)}</Text>
@@ -642,7 +645,7 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           onPress={() => handleApproveIpl(t.id, targetW.nama)}
                         >
                           <Check size={13} color={colors.white} />
-                          <Text style={styles.notifApproveBtnText}>Setujui Lunas</Text>
+                          <Text style={styles.notifApproveBtnText}>Setujui</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -661,10 +664,13 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           <Trophy size={14} color="#DC2626" />
                           <Text style={[styles.notifBadgeTextIpl, { color: '#DC2626' }]}>Iuran</Text>
                         </View>
-                        <View style={{ flex: 1, marginLeft: 6 }}>
-                          <Text style={styles.notifWargaName}>{targetW.nama || 'Warga'}</Text>
-                          <Text style={styles.notifWargaBlok}>
-                            Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'} • {ev.judul || 'Iuran Kegiatan'}
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                          <Text style={styles.notifWargaName} numberOfLines={1}>{targetW.nama || 'Warga'}</Text>
+                          <Text style={styles.notifWargaBlok} numberOfLines={1}>
+                            Blok {targetW.blok || 'A'}/{targetW.noRumah || '-'}
+                          </Text>
+                          <Text style={[styles.notifWargaBlok, { fontSize: 11, marginTop: 1 }]} numberOfLines={1}>
+                            {ev.judul || 'Iuran Kegiatan'}
                           </Text>
                         </View>
                         <Text style={[styles.notifNominal, { color: '#DC2626' }]}>
@@ -697,7 +703,7 @@ export default function TopAppBar({ title, navigation, showBack }) {
                           onPress={() => handleApproveEvent(te.id, targetW.nama, ev.judul)}
                         >
                           <Check size={13} color={colors.white} />
-                          <Text style={styles.notifApproveBtnText}>Setujui Lunas</Text>
+                          <Text style={styles.notifApproveBtnText}>Setujui</Text>
                         </TouchableOpacity>
                       </View>
                     </View>

@@ -503,13 +503,13 @@ export default function DetailTagihanScreen({ route, navigation }) {
         {/* ===================== SECTION BUKTI PEMBAYARAN ===================== */}
         <View style={styles.infoCard}>
           <View style={styles.proofHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
               <Receipt size={18} color={colors.primary} />
               <Text style={styles.cardSectionTitle}>BUKTI PEMBAYARAN</Text>
             </View>
             <View style={[styles.subBadge, isLunas ? styles.badgeLunas : isPending ? styles.badgePending : isPerluDiperbaiki ? styles.badgeTolak : styles.badgeBelum]}>
-              <Text style={[styles.subBadgeText, isLunas ? styles.textLunas : isPending ? styles.textPending : isPerluDiperbaiki ? styles.textTolak : styles.textBelum]}>
-                {isLunas ? 'DIBAYAR' : isPending ? 'MENUNGGU VERIFIKASI' : isPerluDiperbaiki ? 'DITOLAK' : 'BELUM ADA BUKTI'}
+              <Text style={[styles.subBadgeText, isLunas ? styles.textLunas : isPending ? styles.textPending : isPerluDiperbaiki ? styles.textTolak : styles.textBelum]} numberOfLines={1}>
+                {isLunas ? 'DIBAYAR' : isPending ? 'VERIFIKASI' : isPerluDiperbaiki ? 'DITOLAK' : 'BELUM'}
               </Text>
             </View>
           </View>
@@ -556,7 +556,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
                 activeOpacity={0.85}
               >
                 <Eye size={15} color={colors.primary} />
-                <Text style={styles.btnViewProofFullText}>Buka Gambar Bukti Pembayaran</Text>
+                <Text style={styles.btnViewProofFullText} numberOfLines={1}>Buka Gambar Bukti</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -598,7 +598,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
                   ) : (
                     <>
                       <Upload size={14} color="#FFFFFF" />
-                      <Text style={styles.btnSubmitProofText}>Kirim Bukti Pembayaran</Text>
+                      <Text style={styles.btnSubmitProofText} numberOfLines={1}>Kirim Bukti</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -614,8 +614,8 @@ export default function DetailTagihanScreen({ route, navigation }) {
               activeOpacity={0.88}
             >
               <Camera size={18} color="#FFFFFF" />
-              <Text style={styles.btnOpenUploadPickerText}>
-                {isPerluDiperbaiki ? 'Upload Bukti Baru' : isPending ? 'Ganti / Upload Ulang Bukti' : 'Upload Bukti Pembayaran'}
+              <Text style={styles.btnOpenUploadPickerText} numberOfLines={1}>
+                {isPerluDiperbaiki ? 'Upload Bukti Baru' : isPending ? 'Upload Ulang Bukti' : 'Upload Bukti Bayar'}
               </Text>
             </TouchableOpacity>
           ) : null}
