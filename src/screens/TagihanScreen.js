@@ -775,7 +775,7 @@ export default function TagihanScreen({ navigation }) {
               {/* Action Buttons Row */}
               {!isSelectionMode ? (
                 <View style={styles.cardActionsRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 64 }}>
                     <AppButton
                       title="Detail"
                       variant="secondary"
@@ -786,7 +786,7 @@ export default function TagihanScreen({ navigation }) {
 
                   {/* Warga: Bayar atau Kwitansi WA */}
                   {Boolean(isWarga && !isLunas) ? (
-                    <View style={{ flex: 1.6 }}>
+                    <View style={{ flex: 1.6, minWidth: 90 }}>
                       <AppButton
                         title={isPerluDiperbaiki ? 'Upload Ulang' : isPending ? 'Cek Bukti' : 'Bayar'}
                         variant={isPerluDiperbaiki ? 'danger' : 'primary'}
@@ -798,7 +798,7 @@ export default function TagihanScreen({ navigation }) {
                   ) : null}
 
                   {Boolean(isWarga && isLunas) ? (
-                    <View style={{ flex: 1.3 }}>
+                    <View style={{ flex: 1.3, minWidth: 80 }}>
                       <AppButton
                         title="Kwitansi"
                         variant="secondary"
@@ -811,7 +811,7 @@ export default function TagihanScreen({ navigation }) {
 
                   {/* Admin/RT Actions */}
                   {Boolean(isAdminLoggedIn && isBelum && targetWarga.noHp) ? (
-                    <View style={{ flex: 1.3 }}>
+                    <View style={{ flex: 1.3, minWidth: 80 }}>
                       <AppButton
                         title="Ingatkan"
                         variant="secondary"
@@ -824,7 +824,7 @@ export default function TagihanScreen({ navigation }) {
 
                   {Boolean(isAdminLoggedIn && isLunas) ? (
                     <>
-                      <View style={{ flex: 1.3 }}>
+                      <View style={{ flex: 1.3, minWidth: 80 }}>
                         <AppButton
                           title="Kirim WA"
                           variant="secondary"
@@ -844,7 +844,7 @@ export default function TagihanScreen({ navigation }) {
                   ) : null}
 
                   {Boolean(isAdminLoggedIn && isPending) ? (
-                    <View style={{ flex: 1.5 }}>
+                    <View style={{ flex: 1.5, minWidth: 95 }}>
                       <AppButton
                         title="Periksa Bukti"
                         variant="primary"
@@ -856,7 +856,7 @@ export default function TagihanScreen({ navigation }) {
 
                   {Boolean(isAdminLoggedIn) ? (
                     <TouchableOpacity
-                      style={[styles.iconActionBtn, { borderColor: '#E0E7FF', backgroundColor: '#EEF2FF', marginRight: 4 }]}
+                      style={[styles.iconActionBtn, { borderColor: '#E0E7FF', backgroundColor: '#EEF2FF' }]}
                       onPress={() => handleBukaEdit(item)}
                       activeOpacity={0.8}
                     >
@@ -2627,7 +2627,9 @@ const styles = StyleSheet.create({
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
+    rowGap: 8,
     marginTop: spacing.xs
   },
   iconActionBtn: {

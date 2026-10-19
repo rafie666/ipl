@@ -202,8 +202,8 @@ const styles = StyleSheet.create({
   },
   mini: {
     height: 36,
-    minWidth: 112,
-    paddingHorizontal: 14,
+    minWidth: 72,
+    paddingHorizontal: 12,
   },
   fullWidth: {
     width: '100%',

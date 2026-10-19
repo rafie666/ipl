@@ -459,7 +459,8 @@ const styles = StyleSheet.create({
   },
   wargaNama: {
     ...typography.cardTitle,
-    marginBottom: 2
+    marginBottom: 2,
+    flexShrink: 1
   },
   addressRow: {
     flexDirection: 'row',
@@ -488,7 +489,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: radius.sm,
-    borderWidth: 1
+    borderWidth: 1,
+    flexShrink: 0
   },
   jabatanChipText: {
     fontSize: 9.5,

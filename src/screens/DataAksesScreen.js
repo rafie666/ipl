@@ -621,7 +621,9 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   roleGridBtn: {
-    width: '31%',
+    flexGrow: 1,
+    flexBasis: '30%',
+    minWidth: 80,
     height: 38,
     borderRadius: radius.md,
     backgroundColor: colors.background,
@@ -648,7 +650,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radius.full,
-    borderWidth: 1
+    borderWidth: 1,
+    flexShrink: 0
   },
   jabatanPillText: {
     fontSize: 11,

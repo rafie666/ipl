@@ -759,13 +759,15 @@ const styles = StyleSheet.create({
     fontSize: 16.5,
     fontWeight: '800',
     color: colors.white,
-    letterSpacing: -0.3
+    letterSpacing: -0.3,
+    flexShrink: 1
   },
   rolePill: {
     backgroundColor: 'rgba(255, 255, 255, 0.24)',
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 6
+    borderRadius: 6,
+    flexShrink: 0
   },
   rolePillText: {
     fontSize: 9.5,

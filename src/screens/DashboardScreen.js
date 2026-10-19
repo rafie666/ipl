@@ -3520,7 +3520,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
-    letterSpacing: -0.2
+    letterSpacing: -0.2,
+    flexShrink: 1
   },
   bendaharaActivePill: {
     flexDirection: 'row',
@@ -3531,7 +3532,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#DCFCE7',
     borderWidth: 1,
-    borderColor: '#86EFAC'
+    borderColor: '#86EFAC',
+    flexShrink: 0
   },
   bendaharaActiveDot: {
     width: 6,

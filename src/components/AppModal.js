@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   actionBtnCol: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   }
 })

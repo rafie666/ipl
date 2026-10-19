@@ -539,6 +539,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   residentCol: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
     justifyContent: 'center',
   },
   residentNameText: {
@@ -556,8 +559,9 @@ const styles = StyleSheet.create({
   },
   miniBtn: {
     height: 36,
-    minWidth: 112,
-    paddingHorizontal: 14,
+    minWidth: 90,
+    paddingHorizontal: 12,
+    flexShrink: 0,
     borderRadius: radius.full,
     flexDirection: 'row',
     alignItems: 'center',

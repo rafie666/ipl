@@ -809,7 +809,10 @@ export default function PengaduanScreen({ navigation }) {
         transparent={true}
         onRequestClose={() => setDetailModalOpen(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.modalContainer}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
@@ -1050,7 +1053,7 @@ export default function PengaduanScreen({ navigation }) {
               )}
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

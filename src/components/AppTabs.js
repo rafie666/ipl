@@ -38,6 +38,7 @@ export default function AppTabs({
               styles.tabUnderlineText,
               isActive && styles.tabUnderlineTextActive
             ]}
+            numberOfLines={1}
           >
             {tab.label}
           </Text>
@@ -90,6 +91,7 @@ export default function AppTabs({
             styles.chipText,
             isActive && styles.chipTextActive
           ]}
+          numberOfLines={1}
         >
           {tab.label}
         </Text>
