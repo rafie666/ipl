@@ -41,30 +41,27 @@ import AppBadge from '../components/AppBadge'
 import AppButton from '../components/AppButton'
 import { colors, typography, spacing, radius, shadows } from '../utils/theme'
 
-// Conditionally require react-native-maps for native platforms
-let MapView, Marker, Callout, Circle
+// Conditionally require react-native-webview for native platforms (Android & iOS)
+let WebView = null
 try {
   if (Platform.OS !== 'web') {
-    const Maps = require('react-native-maps')
-    MapView = Maps.default
-    Marker = Maps.Marker
-    Callout = Maps.Callout
-    Circle = Maps.Circle
+    WebView = require('react-native-webview').WebView
   }
 } catch (err) {
-  MapView = null
+  WebView = null
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 export default function PetaWargaScreen({ navigation }) {
-  const { warga, scopedWarga, tagihan, rts = [], isWarga, isAdminLoggedIn, currentWarga, currentUser, isAdmin } = useApp()
+  const { warga, scopedWarga, tagihan, rts = [], isWarga, isAdminLoggedIn, currentWarga, currentUser, isAdmin, isBendahara } = useApp()
   const [activeTab, setActiveTab] = useState('maps') // 'maps' | 'denah' | 'posko' | 'list'
   const [selectedRt, setSelectedRt] = useState('Semua')
   const [selectedBlok, setSelectedBlok] = useState('Semua')
 
-  // Maps states
-  const mapRef = useRef(null)
+  // Maps states & refs
+  const webViewRef = useRef(null)
+  const iframeRef = useRef(null)
   const [userLocation, setUserLocation] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
   const [locationPermission, setLocationPermission] = useState(null)
@@ -81,12 +78,13 @@ export default function PetaWargaScreen({ navigation }) {
     longitudeDelta: 0.0055
   }
 
-  // Restrict to RT and RW only
-  if (isWarga && !isAdminLoggedIn) {
+  // Khusus role Admin dan Bendahara saja
+  const isAllowedPeta = isAdmin || isBendahara
+  if (!isAllowedPeta) {
     return (
       <View style={styles.container}>
         <AppHeader
-          title="Peta & Denah Lingkungan"
+          title="Denah & Peta Warga"
           subtitle="Akses Terbatas"
           onBack={() => navigation.goBack()}
         />
@@ -94,9 +92,9 @@ export default function PetaWargaScreen({ navigation }) {
           <View style={styles.restrictedIconWrap}>
             <Shield size={38} color={colors.primary} />
           </View>
-          <Text style={styles.restrictedTitle}>Akses Khusus Pengurus RT & RW</Text>
+          <Text style={styles.restrictedTitle}>Akses Khusus Admin & Bendahara</Text>
           <Text style={styles.restrictedSubtitle}>
-            Fitur pemetaan GIS interaktif, sebaran status iuran rumah warga, dan denah posko hanya dapat diakses oleh Pengurus RT dan Super Admin RW.
+            Fitur denah, pemetaan visual GIS, dan status iuran warga hanya dapat diakses oleh Admin IT dan Bendahara Keuangan.
           </Text>
           <AppButton
             title="Kembali ke Beranda"
@@ -108,7 +106,7 @@ export default function PetaWargaScreen({ navigation }) {
     )
   }
 
-  const wargaToDisplay = scopedWarga || warga
+  const wargaToDisplay = isAdmin ? warga : (scopedWarga || warga)
 
   const existingBloks = Array.from(
     new Set(wargaToDisplay.map((w) => (w.blok || '').toUpperCase()).filter(Boolean))
@@ -135,12 +133,44 @@ export default function PetaWargaScreen({ navigation }) {
     getUserCurrentLocation()
   }, [])
 
+  // Web message listener for iframe bridge
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handleWebMsg = (e) => handleWebViewMessage(e)
+      window.addEventListener('message', handleWebMsg)
+      return () => window.removeEventListener('message', handleWebMsg)
+    }
+  }, [])
+
+  const handleWebViewMessage = (event) => {
+    try {
+      const raw = event?.nativeEvent?.data || event?.data
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw
+      if (!data) return
+
+      if (data.type === 'SELECT_MARKER') {
+        setSelectedMarker(data.payload)
+      } else if (data.type === 'DESELECT_MARKER') {
+        setSelectedMarker(null)
+      } else if (data.type === 'OPEN_MAPS') {
+        openGoogleMaps(data.lat, data.lng, data.label)
+      } else if (data.type === 'OPEN_WA') {
+        openWhatsApp(data.phone)
+      } else if (data.type === 'NAVIGATE_DETAIL' && data.payload) {
+        navigation.navigate('DetailWarga', { warga: data.payload })
+      }
+    } catch (_) {}
+  }
+
   const getUserCurrentLocation = async (shouldAnimate = false) => {
     setLocationLoading(true)
     try {
       const { status } = await Location.requestForegroundPermissionsAsync()
       setLocationPermission(status)
       if (status !== 'granted') {
+        if (shouldAnimate) {
+          Alert.alert('Izin Lokasi', 'Akses lokasi diperlukan untuk melihat posisi Anda pada peta lingkungan.')
+        }
         setLocationLoading(false)
         return
       }
@@ -156,15 +186,8 @@ export default function PetaWargaScreen({ navigation }) {
         }
         setUserLocation(coords)
 
-        if (shouldAnimate && mapRef.current) {
-          mapRef.current.animateToRegion(
-            {
-              ...coords,
-              latitudeDelta: 0.0035,
-              longitudeDelta: 0.0035
-            },
-            700
-          )
+        if (shouldAnimate) {
+          focusToCoordinate(coords.latitude, coords.longitude)
         }
       }
     } catch (err) {
@@ -178,22 +201,29 @@ export default function PetaWargaScreen({ navigation }) {
     if (markerObj) {
       setSelectedMarker(markerObj)
     }
-    if (mapRef.current && lat && lng) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: Number(lat),
-          longitude: Number(lng),
-          latitudeDelta: 0.0025,
-          longitudeDelta: 0.0025
-        },
-        600
-      )
+    if (lat && lng) {
+      const jsCode = `if (window.focusMarker) { window.focusMarker(${Number(lat)}, ${Number(lng)}); } true;`
+      if (Platform.OS !== 'web' && webViewRef.current) {
+        webViewRef.current.injectJavaScript(jsCode)
+      } else if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ type: 'FOCUS', lat: Number(lat), lng: Number(lng) }),
+          '*'
+        )
+      }
     }
   }
 
   const resetMapZoom = () => {
-    if (mapRef.current) {
-      mapRef.current.animateToRegion(DEFAULT_REGION, 600)
+    setSelectedMarker(null)
+    const jsCode = `if (window.resetMapView) { window.resetMapView(); } true;`
+    if (Platform.OS !== 'web' && webViewRef.current) {
+      webViewRef.current.injectJavaScript(jsCode)
+    } else if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ type: 'RESET_VIEW' }),
+        '*'
+      )
     }
   }
 
@@ -230,7 +260,7 @@ export default function PetaWargaScreen({ navigation }) {
     return bill?.status === 'Lunas'
   }
 
-  // Generate Leaflet Interactive Map HTML for Desktop Web & Fallback
+  // Generate Leaflet Interactive Map HTML for Mobile (WebView) & Web (iframe)
   const generateLeafletHtml = () => {
     const centerLat = DEFAULT_REGION.latitude
     const centerLng = DEFAULT_REGION.longitude
@@ -265,38 +295,211 @@ export default function PetaWargaScreen({ navigation }) {
     const userLocationJson = userLocation ? JSON.stringify(userLocation) : 'null'
 
     return `<!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Peta Warga IPL</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    html, body, #map { width: 100%; height: 100%; overflow: hidden; background: #e2e8f0; }
-    .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 0; }
-    .leaflet-popup-content { margin: 12px 14px; line-height: 1.4; font-size: 12px; }
-    .popup-title { font-weight: 800; font-size: 14px; color: #0f172a; margin-bottom: 3px; }
-    .popup-sub { color: #64748b; font-size: 11px; margin-bottom: 6px; }
-    .popup-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-weight: 700; font-size: 10px; margin-bottom: 8px; }
-    .badge-lunas { background: #d1fae5; color: #065f46; }
-    .badge-belum { background: #fee2e2; color: #991b1b; }
-    .badge-posko { background: #e0e7ff; color: #3730a3; }
-    .popup-actions { display: flex; gap: 6px; margin-top: 6px; }
-    .popup-btn { flex: 1; text-align: center; padding: 6px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; text-decoration: none; cursor: pointer; }
-    .btn-maps { background: #2563eb; color: #ffffff; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    html, body, #map { width: 100%; height: 100%; overflow: hidden; background: #f8fafc; }
+
+    /* Custom Leaflet Zoom Controls */
+    .leaflet-bar {
+      border-radius: 12px !important;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12) !important;
+      border: 1px solid rgba(226, 232, 240, 0.9) !important;
+    }
+    .leaflet-bar a {
+      background-color: #ffffff !important;
+      color: #0f172a !important;
+      font-weight: 700 !important;
+      width: 36px !important;
+      height: 36px !important;
+      line-height: 36px !important;
+      border-bottom: 1px solid #f1f5f9 !important;
+      transition: all 0.15s ease;
+    }
+    .leaflet-bar a:hover, .leaflet-bar a:active {
+      background-color: #ecfdf5 !important;
+      color: #059669 !important;
+    }
+
+    /* Popup Modern Neo-Banking */
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px !important;
+      box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1) !important;
+      padding: 0 !important;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+    }
+    .leaflet-popup-content {
+      margin: 12px 14px !important;
+      line-height: 1.4 !important;
+    }
+    .leaflet-popup-tip {
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+    }
+    .popup-card {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .popup-tag {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #059669;
+      text-transform: uppercase;
+    }
+    .popup-title {
+      font-weight: 800;
+      font-size: 14px;
+      color: #0f172a;
+    }
+    .popup-sub {
+      color: #64748b;
+      font-size: 11px;
+      margin: 2px 0 4px;
+    }
+    .popup-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 10px;
+      width: fit-content;
+      margin-bottom: 4px;
+    }
+    .badge-paid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .badge-unpaid { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+    .badge-posko { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .popup-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .popup-btn {
+      flex: 1;
+      text-align: center;
+      padding: 7px 8px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 11px;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      border: none;
+    }
+    .btn-maps { background: #059669; color: #ffffff; }
     .btn-wa { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-    .pin-home { width: 26px; height: 26px; border-radius: 13px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: bold; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
-    .pin-lunas { background: #10b981; }
-    .pin-belum { background: #ef4444; }
-    .pin-posko { width: 30px; height: 30px; border-radius: 15px; background: #4f46e5; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; border: 2.5px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); }
-    .pin-user { width: 22px; height: 22px; border-radius: 11px; background: #2563eb; border: 2.5px solid #ffffff; box-shadow: 0 0 0 4px rgba(37,99,235,0.35); }
+    .btn-detail { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    /* Custom Pins */
+    .pin-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .pin-container:hover, .pin-container:active {
+      transform: scale(1.15);
+      z-index: 999 !important;
+    }
+    .pin-bubble {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 7px;
+      border-radius: 9999px;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 800;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+      border: 1.5px solid #ffffff;
+      white-space: nowrap;
+    }
+    .pin-paid {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 4px 12px rgba(5,150,105,0.45);
+    }
+    .pin-unpaid {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      box-shadow: 0 4px 12px rgba(217,119,6,0.45);
+    }
+    .pin-posko {
+      background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+      box-shadow: 0 4px 14px rgba(6,78,59,0.5);
+    }
+    .pin-point {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      margin-top: -1px;
+    }
+    .point-paid { border-top: 5px solid #047857; }
+    .point-unpaid { border-top: 5px solid #d97706; }
+    .point-posko { border-top: 5px solid #022c22; }
+
+    /* GPS Live Pulse */
+    .pin-user-wrap {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pin-user-pulse {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(37, 99, 235, 0.35);
+      animation: userPulse 2s infinite ease-out;
+    }
+    .pin-user-core {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #2563eb;
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(37,99,235,0.5);
+    }
+    @keyframes userPulse {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script>
+    function sendToApp(payload) {
+      const msg = JSON.stringify(payload);
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+      } else if (window.parent && window.parent.postMessage) {
+        window.parent.postMessage(msg, '*');
+      }
+    }
+
     const map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], 17);
+    
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
       maxZoom: 19
@@ -304,50 +507,118 @@ export default function PetaWargaScreen({ navigation }) {
 
     // Circle radius lingkungan
     L.circle([${centerLat}, ${centerLng}], {
-      color: '#2563eb',
-      fillColor: '#3b82f6',
-      fillOpacity: 0.08,
+      color: '#059669',
+      fillColor: '#10b981',
+      fillOpacity: 0.06,
+      weight: 2,
+      dashArray: '6, 6',
       radius: 280
     }).addTo(map);
 
-    // User location
-    const userLoc = ${userLocationJson};
-    if (userLoc && userLoc.latitude) {
-      const userIcon = L.divIcon({ className: 'custom-pin', html: '<div class="pin-user"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
-      L.marker([userLoc.latitude, userLoc.longitude], { icon: userIcon })
-        .addTo(map)
-        .bindPopup('<div class="popup-title">📍 Lokasi Anda Saat Ini</div><div class="popup-sub">Posisi GPS Perangkat</div>');
+    // User location marker
+    let userMarker = null;
+    function setUserLocationPin(lat, lng) {
+      if (userMarker) {
+        userMarker.setLatLng([lat, lng]);
+      } else {
+        const userIcon = L.divIcon({
+          className: 'custom-pin',
+          html: '<div class="pin-user-wrap"><div class="pin-user-pulse"></div><div class="pin-user-core"></div></div>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+        userMarker.bindPopup('<div class="popup-title">📍 Lokasi Anda Saat Ini</div><div class="popup-sub">Posisi GPS Perangkat</div>');
+      }
     }
 
-    // Posko RT Markers
+    const initUserLoc = ${userLocationJson};
+    if (initUserLoc && initUserLoc.latitude) {
+      setUserLocationPin(initUserLoc.latitude, initUserLoc.longitude);
+    }
+
+    // Posko Balai RT Markers
     const rtsData = ${JSON.stringify(rtsMarkersData)};
     rtsData.forEach(rt => {
-      const icon = L.divIcon({ className: 'custom-pin', html: '<div class="pin-posko">🏛️</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
-      const popupHtml = '<div class="popup-title">🏛️ ' + rt.name + '</div>' +
-        '<div class="popup-badge badge-posko">Posko Balai Warga</div>' +
+      const icon = L.divIcon({
+        className: 'custom-pin',
+        html: '<div class="pin-container"><div class="pin-bubble pin-posko">🏛️ ' + rt.name + '</div><div class="pin-point point-posko"></div></div>',
+        iconSize: [84, 32],
+        iconAnchor: [42, 32]
+      });
+      const popupHtml = '<div class="popup-card">' +
+        '<div class="popup-tag">POSKO BALAI WARGA</div>' +
+        '<div class="popup-title">🏛️ ' + rt.name + '</div>' +
+        '<div class="popup-badge badge-posko">Posko Aktif RT</div>' +
         '<div class="popup-sub">' + rt.lokasi + '<br>Ketua: ' + (rt.ketua || '-') + '<br>Bendahara: ' + (rt.bendahara || '-') + '</div>' +
         '<div class="popup-actions">' +
-          '<a class="popup-btn btn-maps" href="https://www.google.com/maps/search/?api=1&query=' + rt.lat + ',' + rt.lng + '" target="_blank">Google Maps</a>' +
-          (rt.kontak ? '<a class="popup-btn btn-wa" href="https://wa.me/' + rt.kontak.replace(/\\D/g, '').replace(/^0/, '62') + '" target="_blank">WhatsApp</a>' : '') +
-        '</div>';
-      L.marker([rt.lat, rt.lng], { icon: icon }).addTo(map).bindPopup(popupHtml);
+          '<button class="popup-btn btn-maps" onclick="sendToApp({ type: \\'OPEN_MAPS\\', lat: ' + rt.lat + ', lng: ' + rt.lng + ', label: \\'Posko ' + rt.name.replace(/'/g, "") + '\\' })">🧭 Navigasi</button>' +
+          (rt.kontak ? '<button class="popup-btn btn-wa" onclick="sendToApp({ type: \\'OPEN_WA\\', phone: \\'' + rt.kontak + '\\' })">💬 WA</button>' : '') +
+        '</div></div>';
+      
+      const m = L.marker([rt.lat, rt.lng], { icon: icon }).addTo(map).bindPopup(popupHtml);
+      m.on('click', () => {
+        sendToApp({ type: 'SELECT_MARKER', payload: { ...rt, isPoskoMarker: true } });
+      });
     });
 
     // Warga Markers
     const wargaData = ${JSON.stringify(wargaMarkersData)};
     wargaData.forEach(w => {
-      const pinClass = w.isPaid ? 'pin-lunas' : 'pin-belum';
-      const badgeClass = w.isPaid ? 'badge-lunas' : 'badge-belum';
+      const pinClass = w.isPaid ? 'pin-paid' : 'pin-unpaid';
+      const pointClass = w.isPaid ? 'point-paid' : 'point-unpaid';
+      const badgeClass = w.isPaid ? 'badge-paid' : 'badge-unpaid';
       const statusText = w.isPaid ? 'IPL LUNAS ✓' : 'BELUM BAYAR';
-      const icon = L.divIcon({ className: 'custom-pin', html: '<div class="pin-home ' + pinClass + '">🏠</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
-      const popupHtml = '<div class="popup-title">Blok ' + w.blok + '/' + w.noRumah + ' • ' + w.nama + '</div>' +
+      const blokLabel = (w.blok || 'A') + '-' + (w.noRumah || '01');
+      
+      const icon = L.divIcon({
+        className: 'custom-pin',
+        html: '<div class="pin-container"><div class="pin-bubble ' + pinClass + '">🏠 ' + blokLabel + '</div><div class="pin-point ' + pointClass + '"></div></div>',
+        iconSize: [74, 30],
+        iconAnchor: [37, 30]
+      });
+
+      const popupHtml = '<div class="popup-card">' +
+        '<div class="popup-tag">UNIT RUMAH WARGA</div>' +
+        '<div class="popup-title">Blok ' + w.blok + '/' + w.noRumah + ' • ' + w.nama + '</div>' +
         '<div class="popup-badge ' + badgeClass + '">' + statusText + '</div>' +
         '<div class="popup-sub">Status: ' + w.statusHuni + ' • ' + w.jumlahJiwa + ' Jiwa</div>' +
         '<div class="popup-actions">' +
-          '<a class="popup-btn btn-maps" href="https://www.google.com/maps/search/?api=1&query=' + w.lat + ',' + w.lng + '" target="_blank">Navigasi</a>' +
-          (w.noHp ? '<a class="popup-btn btn-wa" href="https://wa.me/' + w.noHp.replace(/\\D/g, '').replace(/^0/, '62') + '" target="_blank">Chat WA</a>' : '') +
-        '</div>';
-      L.marker([w.lat, w.lng], { icon: icon }).addTo(map).bindPopup(popupHtml);
+          '<button class="popup-btn btn-maps" onclick="sendToApp({ type: \\'OPEN_MAPS\\', lat: ' + w.lat + ', lng: ' + w.lng + ', label: \\'Rumah ' + w.nama.replace(/'/g, "") + '\\' })">🧭 Navigasi</button>' +
+          (w.noHp ? '<button class="popup-btn btn-wa" onclick="sendToApp({ type: \\'OPEN_WA\\', phone: \\'' + w.noHp + '\\' })">💬 WA</button>' : '') +
+          '<button class="popup-btn btn-detail" onclick="sendToApp({ type: \\'NAVIGATE_DETAIL\\', payload: ' + JSON.stringify(w).replace(/"/g, '&quot;') + ' })">Detail</button>' +
+        '</div></div>';
+
+      const m = L.marker([w.lat, w.lng], { icon: icon }).addTo(map).bindPopup(popupHtml);
+      m.on('click', () => {
+        sendToApp({ type: 'SELECT_MARKER', payload: { ...w, isWargaMarker: true } });
+      });
+    });
+
+    map.on('click', () => {
+      sendToApp({ type: 'DESELECT_MARKER' });
+    });
+
+    // Global bridge window methods
+    window.focusMarker = function(lat, lng) {
+      map.flyTo([lat, lng], 18, { animate: true, duration: 0.8 });
+    };
+    window.setUserLocation = function(lat, lng) {
+      setUserLocationPin(lat, lng);
+      map.flyTo([lat, lng], 18, { animate: true, duration: 0.8 });
+    };
+    window.resetMapView = function() {
+      map.flyTo([${centerLat}, ${centerLng}], 17, { animate: true, duration: 0.8 });
+    };
+
+    // Web iframe postMessage listener
+    window.addEventListener('message', function(event) {
+      try {
+        const d = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (d.type === 'FOCUS') window.focusMarker(d.lat, d.lng);
+        if (d.type === 'SET_USER_LOC') window.setUserLocation(d.lat, d.lng);
+        if (d.type === 'RESET_VIEW') window.resetMapView();
+      } catch (_) {}
     });
   </script>
 </body>
@@ -603,12 +874,13 @@ export default function PetaWargaScreen({ navigation }) {
         </View>
       )}
 
-      {/* ===================== VIEW MODE 1: PETA INTERAKTIF (LEAFLET WEB / REACT-NATIVE-MAPS) ===================== */}
+      {/* ===================== VIEW MODE 1: PETA INTERAKTIF LEAFLET ===================== */}
       {activeTab === 'maps' && (
         <View style={styles.mapContainer}>
           {Platform.OS === 'web' ? (
-            /* DESKTOP & WEB: Full Interactive Leaflet Map */
+            /* DESKTOP & WEB: Full Interactive Leaflet Map via iframe */
             <iframe
+              ref={iframeRef}
               title="Peta Lingkungan Leaflet"
               srcDoc={generateLeafletHtml()}
               style={{
@@ -618,100 +890,29 @@ export default function PetaWargaScreen({ navigation }) {
                 borderRadius: 0
               }}
             />
-          ) : MapView ? (
-            /* MOBILE NATIVE: react-native-maps */
-            <MapView
-              ref={mapRef}
-              style={styles.mapView}
-              initialRegion={DEFAULT_REGION}
-              showsUserLocation={false}
-              showsCompass={true}
-              showsScale={true}
-              onPress={() => setSelectedMarker(null)}
-            >
-              {/* Radius Lingkungan */}
-              <Circle
-                center={{ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }}
-                radius={250}
-                fillColor="rgba(37, 99, 235, 0.08)"
-                strokeColor="rgba(37, 99, 235, 0.3)"
-                strokeWidth={1.5}
-              />
-
-              {/* Marker Lokasi Pengguna (Live GPS) */}
-              {userLocation && (
-                <Marker
-                  coordinate={userLocation}
-                  title="Lokasi Anda"
-                  description="Posisi GPS perangkat Anda saat ini"
-                  onPress={() =>
-                    setSelectedMarker({
-                      nama: 'Lokasi Anda Saat Ini',
-                      isUserLocationMarker: true,
-                      lat: userLocation.latitude,
-                      lng: userLocation.longitude
-                    })
-                  }
-                >
-                  <View style={styles.userLocationPin}>
-                    <View style={styles.userLocationPulse} />
-                    <View style={styles.userLocationDot} />
-                  </View>
-                </Marker>
+          ) : WebView ? (
+            /* MOBILE NATIVE (ANDROID & IOS): Full Interactive Leaflet Map via WebView */
+            <WebView
+              ref={webViewRef}
+              originWhitelist={['*']}
+              source={{ html: generateLeafletHtml() }}
+              style={styles.webView}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>Memuat Peta Leaflet Lingkungan...</Text>
+                </View>
               )}
-
-              {/* Marker Posko / Balai RT */}
-              {filteredRts.map((rtItem) => (
-                <Marker
-                  key={`rt-${rtItem.id}`}
-                  coordinate={{
-                    latitude: Number(rtItem.lat || -6.59715),
-                    longitude: Number(rtItem.lng || 106.76415)
-                  }}
-                  title={rtItem.name}
-                  description={rtItem.lokasi || 'Posko Balai Warga RT'}
-                  onPress={() => setSelectedMarker({ ...rtItem, isPoskoMarker: true })}
-                >
-                  <View style={styles.poskoMapPin}>
-                    <Landmark size={14} color="#FFFFFF" />
-                  </View>
-                </Marker>
-              ))}
-
-              {/* Marker Rumah Warga */}
-              {filteredWarga.map((wItem) => {
-                const isPaid = isWargaPaid(wItem)
-                const isSelected = selectedMarker?.id === wItem.id
-
-                return (
-                  <Marker
-                    key={`warga-${wItem.id}`}
-                    coordinate={{
-                      latitude: Number(wItem.lat || -6.59715),
-                      longitude: Number(wItem.lng || 106.76415)
-                    }}
-                    title={`Blok ${wItem.blok}/${wItem.noRumah} - ${wItem.nama}`}
-                    description={`Status IPL: ${isPaid ? 'LUNAS' : 'BELUM BAYAR'}`}
-                    onPress={() => setSelectedMarker({ ...wItem, isWargaMarker: true })}
-                  >
-                    <View
-                      style={[
-                        styles.wargaMapPin,
-                        isPaid ? styles.wargaMapPinPaid : styles.wargaMapPinUnpaid,
-                        isSelected && styles.wargaMapPinSelected
-                      ]}
-                    >
-                      <Home size={12} color="#FFFFFF" />
-                    </View>
-                  </Marker>
-                )
-              })}
-            </MapView>
+              onMessage={handleWebViewMessage}
+            />
           ) : (
-            /* FALLBACK FOR ENVIRONMENT WITHOUT NATIVE MAPVIEW */
+            /* FALLBACK FOR ENVIRONMENT WITHOUT WEBVIEW */
             <View style={styles.mapFallbackContainer}>
               <MapIcon size={48} color={colors.primary} style={{ marginBottom: 12 }} />
-              <Text style={styles.mapFallbackTitle}>Peta Interaktif GIS Siap</Text>
+              <Text style={styles.mapFallbackTitle}>Peta Interaktif Leaflet Siap</Text>
               <Text style={styles.mapFallbackDesc}>
                 Titik koordinat {filteredWarga.length} unit rumah & {(rts || []).length} balai posko siap diakses.
               </Text>
@@ -725,49 +926,47 @@ export default function PetaWargaScreen({ navigation }) {
             </View>
           )}
 
-          {/* Quick Floating Controls on Map (Only for Native MapView) */}
-          {Platform.OS !== 'web' && (
-            <View style={styles.mapFloatingControls}>
-              <TouchableOpacity
-                style={styles.floatingMapBtn}
-                onPress={() => getUserCurrentLocation(true)}
-                activeOpacity={0.85}
-              >
-                {locationLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Crosshair size={20} color={colors.primary} />
-                )}
-              </TouchableOpacity>
+          {/* Quick Floating Controls on Map */}
+          <View style={styles.mapFloatingControls}>
+            <TouchableOpacity
+              style={styles.floatingMapBtn}
+              onPress={() => getUserCurrentLocation(true)}
+              activeOpacity={0.85}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Crosshair size={20} color={colors.primary} />
+              )}
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.floatingMapBtn}
-                onPress={resetMapZoom}
-                activeOpacity={0.85}
-              >
-                <Compass size={20} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-          )}
+            <TouchableOpacity
+              style={styles.floatingMapBtn}
+              onPress={resetMapZoom}
+              activeOpacity={0.85}
+            >
+              <Compass size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
 
           {/* Map Legend Bar */}
           <View style={styles.mapLegendBar}>
             <View style={styles.mapLegendItem}>
-              <View style={[styles.legendDotSmall, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.mapLegendText}>IPL Lunas</Text>
+              <View style={[styles.legendDotSmall, { backgroundColor: '#059669' }]} />
+              <Text style={styles.mapLegendText}>Lunas ({filteredWarga.filter(isWargaPaid).length})</Text>
             </View>
             <View style={styles.mapLegendItem}>
-              <View style={[styles.legendDotSmall, { backgroundColor: '#EF4444' }]} />
-              <Text style={styles.mapLegendText}>Belum Lunas</Text>
+              <View style={[styles.legendDotSmall, { backgroundColor: '#F59E0B' }]} />
+              <Text style={styles.mapLegendText}>Belum ({filteredWarga.filter((w) => !isWargaPaid(w)).length})</Text>
             </View>
             <View style={styles.mapLegendItem}>
-              <View style={[styles.legendDotSmall, { backgroundColor: '#4F46E5' }]} />
-              <Text style={styles.mapLegendText}>Balai RT</Text>
+              <View style={[styles.legendDotSmall, { backgroundColor: '#064E3B' }]} />
+              <Text style={styles.mapLegendText}>Balai RT ({filteredRts.length})</Text>
             </View>
           </View>
 
-          {/* Bottom Card for Selected Marker (Native MapView mode) */}
-          {selectedMarker && Platform.OS !== 'web' && (
+          {/* Bottom Card for Selected Marker */}
+          {selectedMarker && (
             <View style={styles.selectedMarkerDrawer}>
               <View style={styles.drawerHeader}>
                 <View style={{ flex: 1 }}>
@@ -1042,7 +1241,30 @@ const styles = StyleSheet.create({
   /* MAPS STYLES */
   mapContainer: {
     flex: 1,
-    position: 'relative'
+    position: 'relative',
+    backgroundColor: '#F8FAFC',
+    overflow: 'hidden'
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: '#F8FAFC'
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(248, 250, 252, 0.95)',
+    zIndex: 10
+  },
+  loadingText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 8
   },
   mapView: {
     width: '100%',

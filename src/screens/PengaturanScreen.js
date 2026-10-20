@@ -6,7 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Platform
+  Platform,
+  useWindowDimensions,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import {
@@ -27,10 +28,17 @@ import {
   MapPin,
   Database,
   FileText,
+  FileCheck,
   ChevronRight,
   Zap,
   CheckCheck,
-  LogOut
+  LogOut,
+  MessageSquareWarning,
+  PartyPopper,
+  PhoneCall,
+  Compass,
+  Settings,
+  LayoutGrid,
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { colors, spacing, radius, shadows, typography } from '../utils/theme'
@@ -58,14 +66,23 @@ export default function PengaturanScreen({ navigation }) {
     bankAccounts = [],
     qrisAccounts = [],
     expoPushToken,
+    aduanUnreadCount = 0,
+    suratUnreadCount = 0,
+    scopedTagihan = [],
+    pengaduan = [],
+    surat = [],
     logout
   } = useApp()
+
+  const { width: screenWidth } = useWindowDimensions()
 
   const autoBilling = config?.autoBilling || {
     enabled: true,
     publishDay: 5,
     dueDay: 20
   }
+
+  const pendingCekCount = (scopedTagihan || []).filter((t) => t.status === 'Menunggu Verifikasi').length
 
   // Logout Confirmation
   const handleLogout = () => {
@@ -85,7 +102,7 @@ export default function PengaturanScreen({ navigation }) {
     ])
   }
 
-  // Role & View Switcher: Hanya aktif jika user memiliki jabatan (RT, RW, Bendahara, Pengurus, Admin)
+  // Role & View Switcher
   const userRolesList = []
   if (hasJabatan) {
     const jabatanTitle = officialJabatan === 'rt'
@@ -108,7 +125,6 @@ export default function PengaturanScreen({ navigation }) {
       ? 'Fasum'
       : 'Sistem IT'
 
-    // 1. Tampilan Jabatan
     userRolesList.push({
       roleId: officialJabatan,
       name: jabatanTitle,
@@ -119,7 +135,6 @@ export default function PengaturanScreen({ navigation }) {
       icon: ShieldCheck
     })
 
-    // 2. Tampilan Warga
     userRolesList.push({
       roleId: 'warga',
       name: 'Warga',
@@ -135,7 +150,6 @@ export default function PengaturanScreen({ navigation }) {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
     } catch {}
-
     if (rItem.roleId === 'warga') {
       switchActiveRole('warga')
     } else {
@@ -143,126 +157,155 @@ export default function PengaturanScreen({ navigation }) {
     }
   }
 
-  // 3 Quick Action Cards (seperti 3 kotak di foto)
-  const quickActionCards = (() => {
+  // Compute cell width for 4-column grid
+  const contentWidth = Math.min(screenWidth, 480) - 32
+  const cellGap = 10
+  const cellWidth = Math.floor((contentWidth - cellGap * 3) / 4)
+
+  // Per-role action tiles
+  const getActionTiles = () => {
     if (isWarga) {
       return [
-        {
-          id: 'bayar',
-          label: 'Bayar IPL',
-          icon: Receipt,
-          iconColor: '#059669',
-          onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' })
-        },
-        {
-          id: 'surat',
-          label: 'Surat RT',
-          icon: FileText,
-          iconColor: '#2563EB',
-          onPress: () => navigation.navigate('Surat')
-        },
-        {
-          id: 'profil',
-          label: 'Data Diri',
-          icon: Sliders,
-          iconColor: '#D97706',
-          onPress: () => navigation.navigate('EditProfileWarga')
-        }
+        { id: 'tagihan', label: 'Tagihan IPL', icon: Receipt, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'surat', label: 'Surat RT', icon: FileText, bg: '#EFF6FF', iconColor: '#2563EB', badge: suratUnreadCount > 0 ? suratUnreadCount : undefined },
+        { id: 'lapor', label: 'Lapor', icon: MessageSquareWarning, bg: '#FFF7ED', iconColor: '#D97706', badge: aduanUnreadCount > 0 ? aduanUnreadCount : undefined },
+        { id: 'satpam', label: 'Jadwal Satpam', icon: ShieldCheck, bg: '#F0F9FF', iconColor: '#0284C7' },
+        { id: 'acara', label: 'Iuran Acara', icon: PartyPopper, bg: '#FFF7ED', iconColor: '#EA580C' },
+        { id: 'kas', label: 'Info Kas', icon: Wallet, bg: '#F0FDFA', iconColor: '#0D9488' },
+        { id: 'rekening', label: 'Rekening RT', icon: CreditCard, bg: '#FAF5FF', iconColor: '#9333EA' },
+        { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
+        { id: 'profil', label: 'Data Diri', icon: Sliders, bg: '#FEF3C7', iconColor: '#D97706' },
+        { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
       ]
     }
     if (isBendahara) {
       return [
-        {
-          id: 'verifikasi',
-          label: 'Verifikasi',
-          icon: CheckCheck,
-          iconColor: '#059669',
-          onPress: () => navigation.navigate('Main', { screen: 'LayananTab' })
-        },
-        {
-          id: 'kas',
-          label: 'Buku Kas',
-          icon: Wallet,
-          iconColor: '#2563EB',
-          onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' })
-        },
-        {
-          id: 'iuran',
-          label: 'Pos Iuran',
-          icon: Layers,
-          iconColor: '#7C3AED',
-          onPress: () => navigation.navigate('PosIuran')
-        }
+        { id: 'verifikasi', label: 'Verifikasi IPL', icon: CheckCheck, bg: '#ECFDF5', iconColor: '#059669', badge: pendingCekCount > 0 ? pendingCekCount : undefined },
+        { id: 'kas', label: 'Buku Kas', icon: Wallet, bg: '#EFF6FF', iconColor: '#2563EB' },
+        { id: 'tagihan', label: 'Tagihan Warga', icon: Receipt, bg: '#F0FDFA', iconColor: '#0D9488' },
+        { id: 'warga', label: 'Data Warga', icon: Users, bg: '#FEF3C7', iconColor: '#D97706' },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers, bg: '#FAF5FF', iconColor: '#7C3AED' },
+        { id: 'denah', label: 'Denah & Peta', icon: MapPin, bg: '#FFFBEB', iconColor: '#D97706' },
+        { id: 'rekening', label: 'Rekening Bank', icon: CreditCard, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'lapor', label: 'Aduan', icon: MessageSquareWarning, bg: '#FFF7ED', iconColor: '#EA580C', badge: aduanUnreadCount > 0 ? aduanUnreadCount : undefined },
+        { id: 'surat', label: 'Surat RT', icon: FileText, bg: '#EEF2FF', iconColor: '#4F46E5', badge: suratUnreadCount > 0 ? suratUnreadCount : undefined },
+        { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
+        { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
       ]
     }
-    if (isRT || isRW) {
+    if (isRT) {
       return [
-        {
-          id: 'warga',
-          label: 'Data Warga',
-          icon: Users,
-          iconColor: '#0284C7',
-          onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' })
-        },
-        {
-          id: 'kas',
-          label: 'Kas Wilayah',
-          icon: Wallet,
-          iconColor: '#059669',
-          onPress: () => navigation.navigate('Main', { screen: 'LayananTab' })
-        },
-        {
-          id: 'iuran',
-          label: 'Pos Iuran',
-          icon: Layers,
-          iconColor: '#D97706',
-          onPress: () => navigation.navigate('PosIuran')
-        }
+        { id: 'warga', label: 'Data Warga', icon: Users, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'tagihan', label: 'Tagihan RT', icon: Receipt, bg: '#EFF6FF', iconColor: '#2563EB', badge: pendingCekCount > 0 ? pendingCekCount : undefined },
+        { id: 'kas', label: 'Buku Kas', icon: Wallet, bg: '#F0FDFA', iconColor: '#0D9488' },
+        { id: 'satpam', label: 'Jadwal Satpam', icon: ShieldCheck, bg: '#F0F9FF', iconColor: '#0284C7' },
+        { id: 'surat', label: 'Surat RT', icon: FileCheck, bg: '#EEF2FF', iconColor: '#4F46E5', badge: suratUnreadCount > 0 ? suratUnreadCount : undefined },
+        { id: 'lapor', label: 'Aduan Warga', icon: MessageSquareWarning, bg: '#FFFBEB', iconColor: '#D97706', badge: aduanUnreadCount > 0 ? aduanUnreadCount : undefined },
+        { id: 'acara', label: 'Kegiatan', icon: PartyPopper, bg: '#FFF7ED', iconColor: '#EA580C' },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers, bg: '#FAF5FF', iconColor: '#7C3AED' },
+        { id: 'rekening', label: 'Rekening Bank', icon: CreditCard, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
+        { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
       ]
     }
-    // Admin IT / Pengurus
+    if (isRW) {
+      return [
+        { id: 'warga', label: 'Warga RW', icon: Users, bg: '#FEF2F2', iconColor: '#DC2626' },
+        { id: 'tagihan', label: 'Tagihan RW', icon: Receipt, bg: '#EFF6FF', iconColor: '#2563EB', badge: pendingCekCount > 0 ? pendingCekCount : undefined },
+        { id: 'kas', label: 'Kas Wilayah', icon: Wallet, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'satpam', label: 'Jadwal Satpam', icon: ShieldCheck, bg: '#F0F9FF', iconColor: '#0284C7' },
+        { id: 'surat', label: 'Layanan Surat', icon: FileCheck, bg: '#EEF2FF', iconColor: '#4F46E5', badge: suratUnreadCount > 0 ? suratUnreadCount : undefined },
+        { id: 'lapor', label: 'Aduan Warga', icon: MessageSquareWarning, bg: '#FFFBEB', iconColor: '#D97706', badge: aduanUnreadCount > 0 ? aduanUnreadCount : undefined },
+        { id: 'acara', label: 'Agenda RW', icon: PartyPopper, bg: '#FFF7ED', iconColor: '#EA580C' },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers, bg: '#FAF5FF', iconColor: '#7C3AED' },
+        { id: 'lingkungan', label: 'Identitas RW', icon: Building2, bg: '#F0F9FF', iconColor: '#0284C7' },
+        { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
+        { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
+      ]
+    }
+    if (isPengurus) {
+      return [
+        { id: 'lapor', label: 'Aduan Fasum', icon: MessageSquareWarning, bg: '#FEE2E2', iconColor: '#DC2626', badge: (pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0 ? pengaduan.filter((p) => p.status !== 'Selesai').length : undefined },
+        { id: 'surat', label: 'Surat Warga', icon: FileCheck, bg: '#EFF6FF', iconColor: '#2563EB', badge: (surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0) > 0 ? surat.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan').length : undefined },
+        { id: 'satpam', label: 'Jadwal Satpam', icon: ShieldCheck, bg: '#ECFDF5', iconColor: '#059669' },
+        { id: 'iuran', label: 'Pos Iuran', icon: Layers, bg: '#F0F9FF', iconColor: '#0284C7' },
+        { id: 'acara', label: 'Acara Warga', icon: PartyPopper, bg: '#FFF7ED', iconColor: '#EA580C' },
+        { id: 'kas', label: 'Buku Kas', icon: Wallet, bg: '#F0FDFA', iconColor: '#0D9488' },
+        { id: 'warga', label: 'Data Warga', icon: Users, bg: '#EEF2FF', iconColor: '#4F46E5' },
+        { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
+        { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
+      ]
+    }
+    // Admin IT
     return [
-      {
-        id: 'iuran',
-        label: 'Pos Iuran',
-        icon: Layers,
-        iconColor: '#059669',
-        onPress: () => navigation.navigate('PosIuran')
-      },
-      {
-        id: 'rekening',
-        label: 'Rekening',
-        icon: CreditCard,
-        iconColor: '#2563EB',
-        onPress: () => navigation.navigate('RekeningBank')
-      },
-      {
-        id: 'akses',
-        label: 'Data Akses',
-        icon: ShieldCheck,
-        iconColor: '#7C3AED',
-        onPress: () => navigation.navigate('DataAkses')
-      }
+      { id: 'warga', label: 'Master Warga', icon: Users, bg: '#ECFDF5', iconColor: '#059669' },
+      { id: 'tagihan', label: 'Tagihan IPL', icon: Receipt, bg: '#EFF6FF', iconColor: '#2563EB', badge: pendingCekCount > 0 ? pendingCekCount : undefined },
+      { id: 'kas', label: 'Buku Kas', icon: Wallet, bg: '#F0FDFA', iconColor: '#0D9488' },
+      { id: 'denah', label: 'Denah & Peta', icon: MapPin, bg: '#FEF3C7', iconColor: '#D97706' },
+      { id: 'surat', label: 'Surat RT/RW', icon: FileCheck, bg: '#EEF2FF', iconColor: '#4F46E5', badge: suratUnreadCount > 0 ? suratUnreadCount : undefined },
+      { id: 'lapor', label: 'Aduan Warga', icon: MessageSquareWarning, bg: '#FFFBEB', iconColor: '#D97706', badge: aduanUnreadCount > 0 ? aduanUnreadCount : undefined },
+      { id: 'satpam', label: 'Jadwal Satpam', icon: ShieldCheck, bg: '#F1F5F9', iconColor: '#475569' },
+      { id: 'acara', label: 'Iuran Acara', icon: PartyPopper, bg: '#FFF7ED', iconColor: '#EA580C' },
+      { id: 'iuran', label: 'Pos Tarif IPL', icon: Layers, bg: '#FAF5FF', iconColor: '#9333EA' },
+      { id: 'rekening', label: 'Rekening Bank', icon: CreditCard, bg: '#ECFDF5', iconColor: '#059669' },
+      { id: 'gateway', label: 'Gateway Moota', icon: Database, bg: '#ECFEFF', iconColor: '#0891B2' },
+      { id: 'akses', label: 'Data Akses', icon: ShieldCheck, bg: '#F1F5F9', iconColor: '#334155' },
+      { id: 'lingkungan', label: 'Identitas RW', icon: Building2, bg: '#F0F9FF', iconColor: '#0284C7' },
+      { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
+      { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
+      { id: 'pengaturan', label: 'Pengaturan IT', icon: Settings, bg: '#F1F5F9', iconColor: '#047857' },
+      { id: 'reset', label: 'Reset Data', icon: RefreshCw, bg: '#FEF2F2', iconColor: '#DC2626' },
     ]
-  })()
+  }
+
+  const handleTilePress = (id) => {
+    try { Haptics.selectionAsync().catch(() => {}) } catch {}
+    switch (id) {
+      case 'tagihan': return navigation.navigate('Main', { screen: 'TagihanTab' })
+      case 'verifikasi': return navigation.navigate('Main', { screen: 'LayananTab' })
+      case 'kas': return navigation.navigate('Kas')
+      case 'warga': return navigation.navigate('WargaList')
+      case 'surat': return navigation.navigate('Surat')
+      case 'lapor': return navigation.navigate('Pengaduan')
+      case 'satpam': return navigation.navigate('JadwalSatpam')
+      case 'acara': return navigation.navigate('Events')
+      case 'iuran': return navigation.navigate('PosIuran')
+      case 'rekening': return navigation.navigate('RekeningBank')
+      case 'denah': return navigation.navigate('PetaWarga')
+      case 'gateway': return navigation.navigate('MootaGateway')
+      case 'akses': return navigation.navigate('DataAkses')
+      case 'lingkungan': return navigation.navigate('IdentitasLingkungan')
+      case 'notifikasi': return navigation.navigate('NotifikasiPerangkat')
+      case 'darurat': return navigation.navigate('KontakDarurat')
+      case 'profil': return navigation.navigate('EditProfileWarga')
+      case 'pengaturan': return navigation.navigate('Pengaturan')
+      case 'reset': return handleResetData()
+      default: break
+    }
+  }
+
+  const actionTiles = getActionTiles()
+
+  const roleName = isAdmin ? 'Admin IT'
+    : isBendahara ? 'Bendahara'
+    : isRT ? (currentRT?.name || 'Ketua RT')
+    : isRW ? (currentRW?.name || 'Ketua RW')
+    : isPengurus ? 'Pengurus'
+    : 'Warga'
+
+  const displayName = (currentUser?.name || 'Pengguna').replace(/\s*\(Warga.*?\)/i, '')
 
   return (
     <View style={styles.container}>
-      {/* Header Top (< Profile / Aksi Cepat) */}
+      {/* Header */}
       <View style={styles.topNavRow}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => {
-            if (navigation.canGoBack()) navigation.goBack()
-            else navigation.navigate('Main', { screen: 'DashboardTab' })
-          }}
-          activeOpacity={0.7}
-          accessibilityLabel="Kembali"
-        >
-          <ArrowLeft size={22} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.topNavTitle}>Aksi Cepat</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerIconBox}>
+          <LayoutGrid size={22} color="#059669" strokeWidth={2.4} />
+        </View>
+        <View style={styles.topNavLeft}>
+          <Text style={styles.topNavTitle}>Aksi Cepat</Text>
+          <Text style={styles.topNavSub}>{roleName} • {displayName}</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -270,31 +313,28 @@ export default function PengaturanScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 1. ROLE / VIEW SWITCHER (HANYA JIKA USER MEMILIKI JABATAN) */}
+        {/* ROLE SWITCHER (hanya jika ada jabatan) */}
         {hasJabatan && userRolesList.length > 0 && (
-          <View style={styles.profileSection}>
-            <View style={styles.profileRow}>
+          <View style={styles.switcherCard}>
+            <Text style={styles.switcherLabel}>Mode Tampilan</Text>
+            <View style={styles.switcherRow}>
               {userRolesList.map((rItem) => {
                 const isActive = rItem.isActive
                 const IconComp = rItem.icon
                 return (
                   <TouchableOpacity
                     key={rItem.roleId}
-                    style={styles.profileItem}
+                    style={[styles.switcherItem, isActive && styles.switcherItemActive]}
                     onPress={() => handleSelectRole(rItem)}
                     activeOpacity={0.8}
                   >
-                    <View style={[styles.avatarRing, isActive && styles.avatarRingActive]}>
-                      <View style={[styles.avatarCircle, { backgroundColor: rItem.avatarBg }]}>
-                        <IconComp size={24} color={rItem.avatarColor} strokeWidth={2.4} />
-                      </View>
+                    <View style={[styles.switcherAvatar, { backgroundColor: isActive ? rItem.avatarBg : '#F1F5F9' }]}>
+                      <IconComp size={20} color={isActive ? rItem.avatarColor : '#94A3B8'} strokeWidth={2.4} />
                     </View>
-                    <Text style={[styles.profileName, isActive && styles.profileNameActive]} numberOfLines={1}>
+                    <Text style={[styles.switcherName, isActive && styles.switcherNameActive]} numberOfLines={1}>
                       {rItem.name}
                     </Text>
-                    <Text style={styles.profileSub} numberOfLines={1}>
-                      {rItem.sub}
-                    </Text>
+                    <Text style={styles.switcherSub} numberOfLines={1}>{rItem.sub}</Text>
                   </TouchableOpacity>
                 )
               })}
@@ -302,228 +342,36 @@ export default function PengaturanScreen({ navigation }) {
           </View>
         )}
 
-        {/* 2. THREE QUICK ACTION CARDS */}
-        <View style={styles.threeCardsRow}>
-          {quickActionCards.map((card) => {
-            const IconComp = card.icon
-            return (
-              <TouchableOpacity
-                key={card.id}
-                style={styles.quickCard}
-                onPress={card.onPress}
-                activeOpacity={0.75}
-              >
-                <View style={styles.quickCardIconWrap}>
-                  <IconComp size={26} color={card.iconColor} strokeWidth={2.2} />
-                </View>
-                <Text style={styles.quickCardLabel} numberOfLines={1}>
-                  {card.label}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </View>
-
-        {/* 3. GROUPED LIST CARD - SEMUA NAVIGASI KE FULL PAGE TANPA POP-UP */}
-        <View style={styles.groupedCard}>
-          {isWarga ? (
-            <>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('EditProfileWarga')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#EFF6FF' }]}>
-                  <User size={18} color="#2563EB" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Profil & Data Warga</Text>
-                  <Text style={styles.menuDesc} numberOfLines={1}>
-                    {currentWarga?.nama || currentUser?.name || 'Identitas pribadi & alamat rumah'}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('NotifikasiPerangkat')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#F0FDF4' }]}>
-                  <Bell size={18} color="#16A34A" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Notifikasi & Pengingat</Text>
-                  <Text style={styles.menuDesc}>
-                    {expoPushToken ? 'Notifikasi perangkat aktif 🟢' : 'Atur izin notifikasi HP 🟡'}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('RekeningBank')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FAF5FF' }]}>
-                  <CreditCard size={18} color="#9333EA" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Rekening & QRIS Pengelola</Text>
-                  <Text style={styles.menuDesc}>Info rekening resmi kas RT & RW</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('KontakDarurat')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FEF2F2' }]}>
-                  <Phone size={18} color="#DC2626" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Kontak Darurat Lingkungan</Text>
-                  <Text style={styles.menuDesc}>Nomor satpam, damkar, ambulans, & pengurus</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.menuRow, { borderBottomWidth: 0 }]}
-                onPress={() => navigation.navigate('PetaWarga')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FFFBEB' }]}>
-                  <MapPin size={18} color="#D97706" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Denah & Peta Warga</Text>
-                  <Text style={styles.menuDesc}>Sebaran rumah & fasilitas umum komplek</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('RekeningBank')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#ECFDF5' }]}>
-                  <CreditCard size={18} color="#059669" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Rekening Bank & QRIS</Text>
-                  <Text style={styles.menuDesc}>
-                    {bankAccounts.length} Rekening Aktif • {qrisAccounts.length} Barcode QRIS
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('PosIuran')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FFFBEB' }]}>
-                  <Layers size={18} color="#D97706" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Pos Tarif & Auto-Post Iuran</Text>
-                  <Text style={styles.menuDesc}>
-                    {jenisIuran.length} Pos Iuran • Auto-Post: {autoBilling.enabled ? (`Tgl ${autoBilling.publishDay || 5} (${autoBilling.publishTime || '08:00'} WIB) 🟢`) : 'Nonaktif 🔴'}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('IdentitasLingkungan')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FAF5FF' }]}>
-                  <Building2 size={18} color="#7C3AED" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Identitas Wilayah RT & RW</Text>
-                  <Text style={styles.menuDesc}>{(config?.rw || 'RW 01') + ' • ' + rts.length + ' Rukun Tetangga'}</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('NotifikasiPerangkat')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#F0FDF4' }]}>
-                  <Bell size={18} color="#16A34A" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Notifikasi & Perangkat</Text>
-                  <Text style={styles.menuDesc}>Uji push notifikasi & Expo push token</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => navigation.navigate('MootaGateway')}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#ECFEFF' }]}>
-                  <Database size={18} color="#0891B2" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={styles.menuTitle}>Moota & Supabase Gateway</Text>
-                  <Text style={styles.menuDesc}>Koneksi server cloud & sandbox mutasi bank</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              {isAdmin && (
+        {/* ACTION TILE GRID */}
+        <View style={styles.tilesSection}>
+          <Text style={styles.tilesLabel}>Semua Fitur</Text>
+          <View style={styles.tilesGrid}>
+            {actionTiles.map((tile) => {
+              const IconComp = tile.icon
+              const badgeNum = tile.badge
+              return (
                 <TouchableOpacity
-                  style={styles.menuRow}
-                  onPress={() => navigation.navigate('DataAkses')}
-                  activeOpacity={0.7}
+                  key={tile.id}
+                  style={[styles.tile, { width: cellWidth }]}
+                  onPress={() => handleTilePress(tile.id)}
+                  activeOpacity={0.75}
                 >
-                  <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
-                    <ShieldCheck size={18} color="#475569" />
+                  <View style={[styles.tileIconWrap, { backgroundColor: tile.bg }]}>
+                    <IconComp size={26} color={tile.iconColor} strokeWidth={2} />
+                    {badgeNum != null && badgeNum > 0 && (
+                      <View style={styles.tileBadge}>
+                        <Text style={styles.tileBadgeText}>{badgeNum > 9 ? '9+' : String(badgeNum)}</Text>
+                      </View>
+                    )}
                   </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuTitle}>Data Akses & Keamanan Akun</Text>
-                    <Text style={styles.menuDesc}>Kelola login Ketua RT, Bendahara, & Admin</Text>
-                  </View>
-                  <ChevronRight size={18} color={colors.textSecondary} />
+                  <Text style={styles.tileLabel} numberOfLines={2}>{tile.label}</Text>
                 </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.menuRow, { borderBottomWidth: 0 }]}
-                onPress={handleResetData}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: '#FEF2F2' }]}>
-                  <RefreshCw size={18} color="#DC2626" />
-                </View>
-                <View style={styles.menuTextCol}>
-                  <Text style={[styles.menuTitle, { color: '#DC2626' }]}>Reset Data Sistem</Text>
-                  <Text style={styles.menuDesc}>Kembalikan ke data default awal</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </>
-          )}
+              )
+            })}
+          </View>
         </View>
 
-        {/* 4. LOGOUT BUTTON */}
+        {/* LOGOUT */}
         <TouchableOpacity
           style={styles.logoutBtn}
           onPress={handleLogout}
@@ -555,188 +403,172 @@ const styles = StyleSheet.create({
   topNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 54 : 36,
-    paddingBottom: 12,
-    backgroundColor: '#F8FAFC'
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 56 : 38,
+    paddingBottom: 14,
+    backgroundColor: '#F8FAFC',
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    marginRight: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...Platform.select({
-      web: { boxShadow: '0px 1px 3px rgba(15, 23, 42, 0.05)' },
-      default: { elevation: 1 }
-    })
+    borderColor: '#A7F3D0',
+  },
+  topNavLeft: {
+    flex: 1,
   },
   topNavTitle: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
-    fontFamily: typography.h2.fontFamily,
-    letterSpacing: -0.3
+    fontFamily: typography.h1.fontFamily,
+    letterSpacing: -0.5,
+  },
+  topNavSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 2,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 160
+    paddingBottom: 160,
+    paddingTop: 4,
   },
 
-  // 1. Role / Profile Avatars Row
-  profileSection: {
-    marginTop: 8,
-    marginBottom: 20
-  },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-    gap: 32
-  },
-  profileItem: {
-    alignItems: 'center',
-    width: 88
-  },
-  avatarRing: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    padding: 3,
-    borderWidth: 2.2,
-    borderColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  avatarRingActive: {
-    borderColor: '#0284C7',
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3
-  },
-  avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)'
-  },
-  profileName: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 6,
-    textAlign: 'center'
-  },
-  profileNameActive: {
-    fontWeight: '800',
-    color: '#0F172A'
-  },
-  profileSub: {
-    fontSize: 10.5,
-    color: '#94A3B8',
-    marginTop: 1,
-    textAlign: 'center'
-  },
-
-  // 2. Three Quick Action Cards
-  threeCardsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 22
-  },
-  quickCard: {
-    flex: 1,
+  // Role Switcher
+  switcherCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.85)',
-    ...Platform.select({
-      web: { boxShadow: '0px 2px 8px rgba(15, 23, 42, 0.04)' },
-      default: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        elevation: 2
-      }
-    })
-  },
-  quickCardIconWrap: {
-    marginBottom: 8
-  },
-  quickCardLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0F172A',
-    fontFamily: typography.labelSm.fontFamily
-  },
-
-  // 3. Grouped List Card
-  groupedCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.9)',
-    overflow: 'hidden',
-    marginBottom: 26,
-    ...Platform.select({
-      web: { boxShadow: '0px 2px 12px rgba(15, 23, 42, 0.04)' },
-      default: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.04,
-        shadowRadius: 12,
-        elevation: 2
-      }
-    })
-  },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: '#E2E8F0',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9'
+    marginBottom: 20,
+    ...Platform.select({
+      web: { boxShadow: '0px 2px 8px rgba(15, 23, 42, 0.04)' },
+      default: { elevation: 2, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 }
+    })
   },
-  menuIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+  switcherLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  switcherRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  switcherItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    backgroundColor: '#F8FAFC',
+  },
+  switcherItemActive: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+  },
+  switcherAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12
+    marginBottom: 6,
   },
-  menuTextCol: {
-    flex: 1,
-    minWidth: 0,
-    marginRight: 8
+  switcherName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+    textAlign: 'center',
   },
-  menuTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+  switcherNameActive: {
+    fontWeight: '800',
     color: '#0F172A',
-    fontFamily: typography.label.fontFamily
   },
-  menuDesc: {
-    fontSize: 11.5,
-    color: '#64748B',
-    marginTop: 2
+  switcherSub: {
+    fontSize: 10,
+    color: '#CBD5E1',
+    textAlign: 'center',
+    marginTop: 2,
   },
 
-  // 4. Logout Button
+  // Tiles
+  tilesSection: {
+    marginBottom: 20,
+  },
+  tilesLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 14,
+  },
+  tilesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  tile: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  tileIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    ...Platform.select({
+      web: { boxShadow: '0px 1px 4px rgba(15,23,42,0.05)' },
+      default: { elevation: 1, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }
+    })
+  },
+  tileBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  tileBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  tileLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginTop: 7,
+    lineHeight: 14,
+    minHeight: 28,
+  },
+
+  // Logout
   logoutBtn: {
     marginHorizontal: spacing.md,
     marginTop: 8,
@@ -784,3 +616,4 @@ const styles = StyleSheet.create({
     fontWeight: '500'
   }
 })
+

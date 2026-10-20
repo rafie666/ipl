@@ -104,6 +104,26 @@ export default function LayananScreen({ navigation }) {
       allowedRoles: ['admin', 'rw', 'rt', 'bendahara']
     },
     {
+      id: 'tagihan',
+      title: 'Tagihan & Verifikasi IPL',
+      desc: 'Kelola invoice bulanan warga, verifikasi bukti bayar & konfirmasi lunas.',
+      icon: FileText,
+      color: '#2563EB',
+      route: 'Tagihan',
+      category: 'Keuangan',
+      allowedRoles: ['admin', 'bendahara', 'rw', 'rt']
+    },
+    {
+      id: 'rekening',
+      title: 'Rekening Bank & QRIS',
+      desc: 'Kelola akun bank penerima dan barcode QRIS resmi lingkungan.',
+      icon: Wallet,
+      color: '#059669',
+      route: 'RekeningBank',
+      category: 'Keuangan',
+      allowedRoles: ['admin', 'bendahara']
+    },
+    {
       id: 'surat',
       title: 'Verifikasi Surat Pengantar',
       desc: 'Daftar permohonan surat pengantar warga yang perlu diproses.',
@@ -135,13 +155,13 @@ export default function LayananScreen({ navigation }) {
     },
     {
       id: 'peta',
-      title: 'Peta Pemetaan GIS & Rumah',
+      title: 'Denah & Peta Warga (GIS)',
       desc: 'Pemetaan digital dan status pembayaran tiap unit rumah.',
       icon: MapPin,
       color: '#0284C7',
       route: 'PetaWarga',
       category: 'Ringkasan',
-      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
+      allowedRoles: ['admin', 'bendahara']
     },
     {
       id: 'kontak',
@@ -161,7 +181,17 @@ export default function LayananScreen({ navigation }) {
       color: colors.info,
       route: 'WargaList',
       category: 'Master Data & Akses',
-      allowedRoles: ['admin', 'rw', 'rt', 'pengurus']
+      allowedRoles: ['admin', 'rw', 'rt', 'pengurus', 'bendahara']
+    },
+    {
+      id: 'lingkungan',
+      title: 'Identitas Wilayah RT & RW',
+      desc: 'Struktur kepengurusan, batas teritorial lingkungan & data kontak resmi.',
+      icon: Users,
+      color: '#0D9488',
+      route: 'IdentitasLingkungan',
+      category: 'Master Data & Akses',
+      allowedRoles: ['admin', 'rw', 'rt']
     },
     {
       id: 'akses',
@@ -171,6 +201,36 @@ export default function LayananScreen({ navigation }) {
       color: colors.success,
       route: 'DataAkses',
       category: 'Master Data & Akses',
+      allowedRoles: ['admin']
+    },
+    {
+      id: 'pos_iuran',
+      title: 'Pos Tarif & Otomasi Iuran',
+      desc: 'Master pos iuran, auto-billing tanggal 5, dan nominal tagihan warga.',
+      icon: Settings,
+      color: '#9333EA',
+      route: 'PosIuran',
+      category: 'Sistem & Konfigurasi',
+      allowedRoles: ['admin', 'bendahara']
+    },
+    {
+      id: 'moota',
+      title: 'Moota Gateway & Cloud Database',
+      desc: 'Konfigurasi webhook, mutasi rekening otomatis & Supabase sync.',
+      icon: Key,
+      color: '#0891B2',
+      route: 'MootaGateway',
+      category: 'Sistem & Konfigurasi',
+      allowedRoles: ['admin']
+    },
+    {
+      id: 'notifikasi',
+      title: 'Notifikasi & Pengingat Perangkat',
+      desc: 'Konfigurasi push token, broadcast pesan & pengingat jatuh tempo.',
+      icon: MessageSquareText,
+      color: '#16A34A',
+      route: 'NotifikasiPerangkat',
+      category: 'Sistem & Konfigurasi',
       allowedRoles: ['admin']
     },
     {

@@ -20,7 +20,7 @@ import {
   Layers,
   Wallet,
   ClipboardList,
-  Zap
+  LayoutGrid
 } from 'lucide-react-native'
 
 import { useApp } from '../context/AppContext'
@@ -170,7 +170,7 @@ function MainTabNavigator() {
         component={PengaturanScreen}
         options={{
           tabBarLabel: 'Aksi Cepat',
-          tabBarIcon: ({ color, size }) => <Zap size={size} color={color} />
+          tabBarIcon: ({ color, size }) => <LayoutGrid size={size} color={color} />
         }}
       />
     </Tab.Navigator>

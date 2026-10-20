@@ -44,9 +44,71 @@ import { getJabatanLabel, getJabatanShortLabel, getJabatanTheme } from '../utils
 
 export default function DetailWargaScreen({ route, navigation }) {
   const { warga: routeWarga } = route.params || {}
-  const { warga: allWarga, tagihan, rts, config, isAdminLoggedIn, isWarga, currentUser, hapusWarga, updateWarga, verifikasiWargaBaru } = useApp()
+  const {
+    warga: allWarga,
+    tagihan,
+    rts,
+    config,
+    isAdminLoggedIn,
+    isWarga,
+    isRT,
+    isRW,
+    isAdmin,
+    isBendahara,
+    currentUser,
+    hapusWarga,
+    updateWarga,
+    verifikasiWargaBaru
+  } = useApp()
 
   const warga = allWarga?.find((w) => w.id === routeWarga?.id) || routeWarga
+
+  // Cek otorisasi wilayah: RW hanya warga RW sendiri, RT hanya warga RT sendiri, Warga hanya profil sendiri
+  const isAllowedToView = (() => {
+    if (!warga) return false
+    if (isAdmin || isBendahara) return true
+    if (isRT) {
+      const userRtId = currentUser?.rt_id || 'rt-01-01'
+      return warga.rt_id === userRtId
+    }
+    if (isRW) {
+      const userRwId = currentUser?.rw_id || 'rw-01'
+      if (warga.rw_id) return warga.rw_id === userRwId
+      const targetRt = (rts || []).find((x) => x.id === warga.rt_id)
+      return targetRt?.rw_id === userRwId
+    }
+    if (isWarga) {
+      const myId = currentUser?.resident_id || currentUser?.id
+      return warga.id === myId
+    }
+    return true
+  })()
+
+  if (!isAllowedToView) {
+    return (
+      <View style={styles.container}>
+        <AppHeader
+          title="Data Warga"
+          subtitle="Akses Terbatas"
+          onBack={() => navigation.goBack()}
+        />
+        <View style={styles.restrictedContainer}>
+          <View style={styles.restrictedIconWrap}>
+            <Shield size={38} color="#DC2626" />
+          </View>
+          <Text style={styles.restrictedTitle}>Akses Wilayah Terbatas</Text>
+          <Text style={styles.restrictedSubtitle}>
+            Anda hanya diizinkan untuk melihat data warga yang berada di wilayah kepengurusan Anda sendiri.
+          </Text>
+          <AppButton
+            title="Kembali"
+            variant="primary"
+            onPress={() => navigation.goBack()}
+          />
+        </View>
+      </View>
+    )
+  }
 
   const handleApproveWarga = async (wId, residentName) => {
     Alert.alert(
@@ -950,5 +1012,32 @@ const styles = StyleSheet.create({
     color: '#1E40AF',
     marginTop: 2,
     lineHeight: 15
+  },
+  restrictedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl
+  },
+  restrictedIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.xl,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md
+  },
+  restrictedTitle: {
+    ...typography.h2,
+    textAlign: 'center',
+    marginBottom: spacing.xs
+  },
+  restrictedSubtitle: {
+    ...typography.bodySecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 280,
+    marginBottom: spacing.lg
   }
 })

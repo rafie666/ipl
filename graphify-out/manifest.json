@@ -1,0 +1,566 @@
+{
+  ".claude/settings.json": {
+    "mtime": 1792144112.1856842,
+    "seen": 1792469945.9753246,
+    "ast_hash": "dc580fca35a0e98ed20777ede5e545a1",
+    "semantic_hash": "dc580fca35a0e98ed20777ede5e545a1"
+  },
+  "App.js": {
+    "mtime": 1792144112.1856842,
+    "seen": 1792469945.9753315,
+    "ast_hash": "cea64729518539b83853ca65dc17322b",
+    "semantic_hash": "cea64729518539b83853ca65dc17322b"
+  },
+  "app.json": {
+    "mtime": 1792144836.105082,
+    "seen": 1792469945.9753354,
+    "ast_hash": "b9aaf15b27cb5ce806660a8d62b2cebe",
+    "semantic_hash": "b9aaf15b27cb5ce806660a8d62b2cebe"
+  },
+  "eas.json": {
+    "mtime": 1792144112.1873891,
+    "seen": 1792469945.9753377,
+    "ast_hash": "125415e8b6278e3dc2177ea31e0e5621",
+    "semantic_hash": "125415e8b6278e3dc2177ea31e0e5621"
+  },
+  "google-services.json": {
+    "mtime": 1792144836.106082,
+    "seen": 1792469945.9753394,
+    "ast_hash": "80cc5a0aab0f6f43583c02a59e398df2",
+    "semantic_hash": "80cc5a0aab0f6f43583c02a59e398df2"
+  },
+  "index.js": {
+    "mtime": 1792395825.638578,
+    "seen": 1792469945.9753408,
+    "ast_hash": "9e009b67920a939ea61a131b7d3e0d3b",
+    "semantic_hash": "9e009b67920a939ea61a131b7d3e0d3b"
+  },
+  "package.json": {
+    "mtime": 1792393978.0245526,
+    "seen": 1792469945.9753425,
+    "ast_hash": "2dd32e39cf4f17087710bb982de17ee3",
+    "semantic_hash": "2dd32e39cf4f17087710bb982de17ee3"
+  },
+  "scripts/apply-patches.js": {
+    "mtime": 1792393956.7113047,
+    "seen": 1792469945.9753437,
+    "ast_hash": "dc6ec07d696c6e37392bb73cfec0678c",
+    "semantic_hash": "dc6ec07d696c6e37392bb73cfec0678c"
+  },
+  "skills-lock.json": {
+    "mtime": 1792466845.7525811,
+    "seen": 1792469945.9753458,
+    "ast_hash": "64dc0bb74a837174b81cef4b8882b5b3",
+    "semantic_hash": "64dc0bb74a837174b81cef4b8882b5b3"
+  },
+  "src/api/supabase.js": {
+    "mtime": 1792144112.189389,
+    "seen": 1792469945.9753478,
+    "ast_hash": "e5daf630035692365612292730a570f8",
+    "semantic_hash": "e5daf630035692365612292730a570f8"
+  },
+  "src/components/AppBadge.js": {
+    "mtime": 1792144112.189389,
+    "seen": 1792469945.9753492,
+    "ast_hash": "ce50a0a463f686cdfbdf7c5d7f8a4889",
+    "semantic_hash": "ce50a0a463f686cdfbdf7c5d7f8a4889"
+  },
+  "src/components/AppButton.js": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.975351,
+    "ast_hash": "1b0cb84e840e658af8eb4d14c61006ad",
+    "semantic_hash": "1b0cb84e840e658af8eb4d14c61006ad"
+  },
+  "src/components/AppCard.js": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.9753525,
+    "ast_hash": "ec785f5435430c3ab1ae211ab844d551",
+    "semantic_hash": "ec785f5435430c3ab1ae211ab844d551"
+  },
+  "src/components/AppEmptyState.js": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.975354,
+    "ast_hash": "e208b3a48fa4a4c76ec2db96ae589e2c",
+    "semantic_hash": "e208b3a48fa4a4c76ec2db96ae589e2c"
+  },
+  "src/components/AppEmptyState.tsx": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.9753559,
+    "ast_hash": "2112660ef508d38cef07d4817ac2e172",
+    "semantic_hash": "2112660ef508d38cef07d4817ac2e172"
+  },
+  "src/components/AppHeader.js": {
+    "mtime": 1792403783.6466582,
+    "seen": 1792469945.975358,
+    "ast_hash": "1b0e83d7d7e702fc8e6f1f2b9660a436",
+    "semantic_hash": "1b0e83d7d7e702fc8e6f1f2b9660a436"
+  },
+  "src/components/AppModal.js": {
+    "mtime": 1792398570.567537,
+    "seen": 1792469945.9753594,
+    "ast_hash": "b7c229acbe5db851795217da399a0a28",
+    "semantic_hash": "b7c229acbe5db851795217da399a0a28"
+  },
+  "src/components/AppTabs.js": {
+    "mtime": 1792383624.3005037,
+    "seen": 1792469945.9753609,
+    "ast_hash": "957ae9a7d7d0fa1405c4ce4f631d852c",
+    "semantic_hash": "957ae9a7d7d0fa1405c4ce4f631d852c"
+  },
+  "src/components/BendaharaHeroCard.tsx": {
+    "mtime": 1792383624.3005037,
+    "seen": 1792469945.9753625,
+    "ast_hash": "2779db83284f45e21ffcf7e654d75578",
+    "semantic_hash": "2779db83284f45e21ffcf7e654d75578"
+  },
+  "src/components/CustomAlertModal.js": {
+    "mtime": 1792402673.9411023,
+    "seen": 1792469945.9753652,
+    "ast_hash": "e25edda8246565501ba468778cf3604b",
+    "semantic_hash": "e25edda8246565501ba468778cf3604b"
+  },
+  "src/components/ErrorBoundary.js": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.975367,
+    "ast_hash": "3e4cc5baa5325acacafb69764398e58e",
+    "semantic_hash": "3e4cc5baa5325acacafb69764398e58e"
+  },
+  "src/components/KasWidget.tsx": {
+    "mtime": 1792144836.107082,
+    "seen": 1792469945.9753697,
+    "ast_hash": "84e9ae90679da37e123bc974531b7579",
+    "semantic_hash": "84e9ae90679da37e123bc974531b7579"
+  },
+  "src/components/PengurusHeroCard.tsx": {
+    "mtime": 1792383624.3015037,
+    "seen": 1792469945.9753735,
+    "ast_hash": "a7cd1864ac378b87bcaf5aff145a762b",
+    "semantic_hash": "a7cd1864ac378b87bcaf5aff145a762b"
+  },
+  "src/components/QuickActionGrid.tsx": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.975377,
+    "ast_hash": "7febe5238db1c337c613b6cae53d4afe",
+    "semantic_hash": "7febe5238db1c337c613b6cae53d4afe"
+  },
+  "src/components/RTHeroCard.tsx": {
+    "mtime": 1792144836.107082,
+    "seen": 1792469945.9753807,
+    "ast_hash": "7ea48e7512e513b59381df418d355bd2",
+    "semantic_hash": "7ea48e7512e513b59381df418d355bd2"
+  },
+  "src/components/RWHeroCard.tsx": {
+    "mtime": 1792144836.107082,
+    "seen": 1792469945.9753833,
+    "ast_hash": "de0235c9c14195b5aa5060e7a2aac391",
+    "semantic_hash": "de0235c9c14195b5aa5060e7a2aac391"
+  },
+  "src/components/ReceiptModal.tsx": {
+    "mtime": 1792144112.1901407,
+    "seen": 1792469945.975386,
+    "ast_hash": "f9db64832e66bdbb137aab910d0358ec",
+    "semantic_hash": "f9db64832e66bdbb137aab910d0358ec"
+  },
+  "src/components/TopAppBar.js": {
+    "mtime": 1792403783.6466582,
+    "seen": 1792469945.9753888,
+    "ast_hash": "e0982511584a320ce25067dd194240e3",
+    "semantic_hash": "e0982511584a320ce25067dd194240e3"
+  },
+  "src/components/TransactionListItem.tsx": {
+    "mtime": 1792144836.108082,
+    "seen": 1792469945.9753911,
+    "ast_hash": "68ae95c8dbb632750d347d33020dc08b",
+    "semantic_hash": "68ae95c8dbb632750d347d33020dc08b"
+  },
+  "src/components/TransparansiIuranTable.js": {
+    "mtime": 1792144112.190389,
+    "seen": 1792469945.9753938,
+    "ast_hash": "334b28b6ac8d16bd01453d1efacea646",
+    "semantic_hash": "334b28b6ac8d16bd01453d1efacea646"
+  },
+  "src/components/VirtualResidentCard.tsx": {
+    "mtime": 1792468918.3307402,
+    "seen": 1792469945.9753966,
+    "ast_hash": "d419199617d79969ae057496dff85284",
+    "semantic_hash": "d419199617d79969ae057496dff85284"
+  },
+  "src/components/ui/Badge.tsx": {
+    "mtime": 1792144112.190389,
+    "seen": 1792469945.9753993,
+    "ast_hash": "91016119ae4641d491adb7bccb358286",
+    "semantic_hash": "91016119ae4641d491adb7bccb358286"
+  },
+  "src/components/ui/Button.tsx": {
+    "mtime": 1792383624.3015037,
+    "seen": 1792469945.9754016,
+    "ast_hash": "a7680866e7b4153bceaeb0f6ac565206",
+    "semantic_hash": "a7680866e7b4153bceaeb0f6ac565206"
+  },
+  "src/components/ui/Input.tsx": {
+    "mtime": 1792144836.108082,
+    "seen": 1792469945.9754043,
+    "ast_hash": "f967dc12de91d0ef8af669b7e3bfa339",
+    "semantic_hash": "f967dc12de91d0ef8af669b7e3bfa339"
+  },
+  "src/components/ui/NotificationBadge.tsx": {
+    "mtime": 1792144112.1913717,
+    "seen": 1792469945.9754071,
+    "ast_hash": "76d279eebe3410375f65ffe6952642de",
+    "semantic_hash": "76d279eebe3410375f65ffe6952642de"
+  },
+  "src/components/ui/Skeleton.tsx": {
+    "mtime": 1792144112.1913717,
+    "seen": 1792469945.9754097,
+    "ast_hash": "558206631f21e6b16fca19335a0fe067",
+    "semantic_hash": "558206631f21e6b16fca19335a0fe067"
+  },
+  "src/components/ui/index.ts": {
+    "mtime": 1792144112.1913717,
+    "seen": 1792469945.9754121,
+    "ast_hash": "ebb42761834d388362037e6db8dba974",
+    "semantic_hash": "ebb42761834d388362037e6db8dba974"
+  },
+  "src/context/AppContext.js": {
+    "mtime": 1792465649.8085217,
+    "seen": 1792469945.975415,
+    "ast_hash": "3f0a9fa2c5ede61e99a621196530e9be",
+    "semantic_hash": "3f0a9fa2c5ede61e99a621196530e9be"
+  },
+  "src/data/initialData.js": {
+    "mtime": 1792144112.191389,
+    "seen": 1792469945.9754176,
+    "ast_hash": "97287e48ae1e7a3f98dbcc8d9094cc82",
+    "semantic_hash": "97287e48ae1e7a3f98dbcc8d9094cc82"
+  },
+  "src/data/rtsData.js": {
+    "mtime": 1792144112.1924438,
+    "seen": 1792469945.9754202,
+    "ast_hash": "d16fe5c1d4a284b3c16e1a8e090cefd3",
+    "semantic_hash": "d16fe5c1d4a284b3c16e1a8e090cefd3"
+  },
+  "src/data/rwsData.js": {
+    "mtime": 1792144112.1924438,
+    "seen": 1792469945.9754226,
+    "ast_hash": "cb327cd3e80a7e6453c9a79104853119",
+    "semantic_hash": "cb327cd3e80a7e6453c9a79104853119"
+  },
+  "src/navigation/CustomTabBar.js": {
+    "mtime": 1792144112.1924438,
+    "seen": 1792469945.9754255,
+    "ast_hash": "5b0322933eb43899fc75f4e0faa2266e",
+    "semantic_hash": "5b0322933eb43899fc75f4e0faa2266e"
+  },
+  "src/navigation/FloatingBottomBar.tsx": {
+    "mtime": 1792395994.9175675,
+    "seen": 1792469945.975428,
+    "ast_hash": "e43d952731d066a98d3139724cee5c20",
+    "semantic_hash": "e43d952731d066a98d3139724cee5c20"
+  },
+  "src/navigation/RootNavigator.js": {
+    "mtime": 1792402386.0693982,
+    "seen": 1792469945.9754322,
+    "ast_hash": "5206665ab642cd37bffe49655077fbc1",
+    "semantic_hash": "5206665ab642cd37bffe49655077fbc1"
+  },
+  "src/screens/DashboardScreen.js": {
+    "mtime": 1792403783.6476583,
+    "seen": 1792469945.975435,
+    "ast_hash": "dc68194250e62dcf90f8fc2f51283e69",
+    "semantic_hash": "dc68194250e62dcf90f8fc2f51283e69"
+  },
+  "src/screens/DataAksesScreen.js": {
+    "mtime": 1792398177.084084,
+    "seen": 1792469945.9754379,
+    "ast_hash": "94ae3e9b73a15c21ff9c000c15c2a9cf",
+    "semantic_hash": "94ae3e9b73a15c21ff9c000c15c2a9cf"
+  },
+  "src/screens/DetailTagihanScreen.js": {
+    "mtime": 1792385108.2043955,
+    "seen": 1792469945.9754405,
+    "ast_hash": "68d76d30be66d61041a70119657ecb04",
+    "semantic_hash": "68d76d30be66d61041a70119657ecb04"
+  },
+  "src/screens/DetailWargaScreen.js": {
+    "mtime": 1792144836.111082,
+    "seen": 1792469945.9754486,
+    "ast_hash": "8c91de0112a8cb47f82672f2bda3e0ed",
+    "semantic_hash": "8c91de0112a8cb47f82672f2bda3e0ed"
+  },
+  "src/screens/EditProfileWargaScreen.js": {
+    "mtime": 1792401337.1666641,
+    "seen": 1792469945.9754512,
+    "ast_hash": "64c5e87fd91d700b6bcb1eef61cb71d5",
+    "semantic_hash": "64c5e87fd91d700b6bcb1eef61cb71d5"
+  },
+  "src/screens/EventsScreen.js": {
+    "mtime": 1792144836.111082,
+    "seen": 1792469945.9754536,
+    "ast_hash": "221f23b3565e2b2f7010d321e43c54a1",
+    "semantic_hash": "221f23b3565e2b2f7010d321e43c54a1"
+  },
+  "src/screens/IdentitasLingkunganScreen.js": {
+    "mtime": 1792401191.9808667,
+    "seen": 1792469945.9754562,
+    "ast_hash": "78cee4a58ffd81630f36e8ed3bf2ac70",
+    "semantic_hash": "78cee4a58ffd81630f36e8ed3bf2ac70"
+  },
+  "src/screens/JadwalSatpamScreen.js": {
+    "mtime": 1792144836.112082,
+    "seen": 1792469945.9754589,
+    "ast_hash": "1417bb5058ae59613959b5f8f7bf2cdb",
+    "semantic_hash": "1417bb5058ae59613959b5f8f7bf2cdb"
+  },
+  "src/screens/KasScreen.js": {
+    "mtime": 1792383624.3035038,
+    "seen": 1792469945.9754615,
+    "ast_hash": "3e49bbde61ad4ef57e94dc8f699cbfae",
+    "semantic_hash": "3e49bbde61ad4ef57e94dc8f699cbfae"
+  },
+  "src/screens/KontakDaruratScreen.js": {
+    "mtime": 1792144112.193389,
+    "seen": 1792469945.975466,
+    "ast_hash": "b310f0dbd56b63cd1c4f8d10a1a21c03",
+    "semantic_hash": "b310f0dbd56b63cd1c4f8d10a1a21c03"
+  },
+  "src/screens/LayananScreen.js": {
+    "mtime": 1792398143.4680924,
+    "seen": 1792469945.9754686,
+    "ast_hash": "87225fa977cb227f8ea2ecdf6483e72c",
+    "semantic_hash": "87225fa977cb227f8ea2ecdf6483e72c"
+  },
+  "src/screens/LoginScreen.js": {
+    "mtime": 1792144836.113082,
+    "seen": 1792469945.9754713,
+    "ast_hash": "e576d23e1450bf8a4e4dd642e54d346b",
+    "semantic_hash": "e576d23e1450bf8a4e4dd642e54d346b"
+  },
+  "src/screens/MootaGatewayScreen.js": {
+    "mtime": 1792401310.9470375,
+    "seen": 1792469945.9754739,
+    "ast_hash": "dc0c5eabfafd5db15c8fd6c3d5298585",
+    "semantic_hash": "dc0c5eabfafd5db15c8fd6c3d5298585"
+  },
+  "src/screens/NotifikasiPerangkatScreen.js": {
+    "mtime": 1792401225.027276,
+    "seen": 1792469945.9754767,
+    "ast_hash": "c02e5538750843f87e24298c8074ac02",
+    "semantic_hash": "c02e5538750843f87e24298c8074ac02"
+  },
+  "src/screens/PembayaranScreen.js": {
+    "mtime": 1792144836.114434,
+    "seen": 1792469945.9754794,
+    "ast_hash": "b116ecfe3402a9e128bffe6c2346d584",
+    "semantic_hash": "b116ecfe3402a9e128bffe6c2346d584"
+  },
+  "src/screens/PengaduanScreen.js": {
+    "mtime": 1792383624.3035038,
+    "seen": 1792469945.9754817,
+    "ast_hash": "7b0fb8be7f7c7b1d676dbc7e0cb406e0",
+    "semantic_hash": "7b0fb8be7f7c7b1d676dbc7e0cb406e0"
+  },
+  "src/screens/PengaturanScreen.js": {
+    "mtime": 1792402769.231196,
+    "seen": 1792469945.9754844,
+    "ast_hash": "21c2ca861ff8f849688f9c6e15c1bc38",
+    "semantic_hash": "21c2ca861ff8f849688f9c6e15c1bc38"
+  },
+  "src/screens/PetaWargaScreen.js": {
+    "mtime": 1792144836.115082,
+    "seen": 1792469945.9754875,
+    "ast_hash": "a1bb221c32f30973477fa9feca358b3d",
+    "semantic_hash": "a1bb221c32f30973477fa9feca358b3d"
+  },
+  "src/screens/PosIuranScreen.js": {
+    "mtime": 1792465649.8085217,
+    "seen": 1792469945.97549,
+    "ast_hash": "52a403316a7d2f8f21e605db3285c7f9",
+    "semantic_hash": "52a403316a7d2f8f21e605db3285c7f9"
+  },
+  "src/screens/ProfileScreen.js": {
+    "mtime": 1792402858.4671152,
+    "seen": 1792469945.9754927,
+    "ast_hash": "f64a0db895f0d54e41ca8bafd5c266f6",
+    "semantic_hash": "f64a0db895f0d54e41ca8bafd5c266f6"
+  },
+  "src/screens/RegisterScreen.js": {
+    "mtime": 1792144836.116082,
+    "seen": 1792469945.975495,
+    "ast_hash": "f0aba592128dea33fdf8d93e8d550c6d",
+    "semantic_hash": "f0aba592128dea33fdf8d93e8d550c6d"
+  },
+  "src/screens/RekeningBankScreen.js": {
+    "mtime": 1792401089.3079383,
+    "seen": 1792469945.9754977,
+    "ast_hash": "8b70819a2e5918ea986dd33d04b50c36",
+    "semantic_hash": "8b70819a2e5918ea986dd33d04b50c36"
+  },
+  "src/screens/SplashScreen.js": {
+    "mtime": 1792144112.195389,
+    "seen": 1792469945.9755075,
+    "ast_hash": "11f079c6b5923c44b545117f5b95141e",
+    "semantic_hash": "11f079c6b5923c44b545117f5b95141e"
+  },
+  "src/screens/SuratScreen.js": {
+    "mtime": 1792383624.3047066,
+    "seen": 1792469945.9755085,
+    "ast_hash": "bec53ba81b31fb5c02d1ae2389d347bc",
+    "semantic_hash": "bec53ba81b31fb5c02d1ae2389d347bc"
+  },
+  "src/screens/TagihanScreen.js": {
+    "mtime": 1792383624.3052495,
+    "seen": 1792469945.9755094,
+    "ast_hash": "099b3a3ca3ef9224c6f740b7f6b88635",
+    "semantic_hash": "099b3a3ca3ef9224c6f740b7f6b88635"
+  },
+  "src/screens/WargaListScreen.js": {
+    "mtime": 1792383624.3055482,
+    "seen": 1792469945.9755106,
+    "ast_hash": "ada56809a8ba6db834da0f9c9b7f6c37",
+    "semantic_hash": "ada56809a8ba6db834da0f9c9b7f6c37"
+  },
+  "src/services/authService.js": {
+    "mtime": 1792383624.3055482,
+    "seen": 1792469945.9755116,
+    "ast_hash": "275b5ecf69dc5b8d0d4869f32d759cc8",
+    "semantic_hash": "275b5ecf69dc5b8d0d4869f32d759cc8"
+  },
+  "src/services/mootaService.js": {
+    "mtime": 1792144112.196991,
+    "seen": 1792469945.9755125,
+    "ast_hash": "40edece23b86dd4bd1f310c5ca966637",
+    "semantic_hash": "40edece23b86dd4bd1f310c5ca966637"
+  },
+  "src/services/notificationService.js": {
+    "mtime": 1792395915.277078,
+    "seen": 1792469945.9755137,
+    "ast_hash": "2e9ea01d8e1abeaf1023e20d86e8f55b",
+    "semantic_hash": "2e9ea01d8e1abeaf1023e20d86e8f55b"
+  },
+  "src/theme/index.ts": {
+    "mtime": 1792144836.118082,
+    "seen": 1792469945.9755147,
+    "ast_hash": "c363d2e0ac1e45bfe32bce2c7c41e5c8",
+    "semantic_hash": "c363d2e0ac1e45bfe32bce2c7c41e5c8"
+  },
+  "src/utils/billingScheduler.js": {
+    "mtime": 1792402140.507995,
+    "seen": 1792469945.9755156,
+    "ast_hash": "253713b4ab9885f052cc86294c64fd80",
+    "semantic_hash": "253713b4ab9885f052cc86294c64fd80"
+  },
+  "src/utils/clipboard.js": {
+    "mtime": 1792144112.1973188,
+    "seen": 1792469945.9755166,
+    "ast_hash": "8ff031a851dce931a634cd288263c8a2",
+    "semantic_hash": "8ff031a851dce931a634cd288263c8a2"
+  },
+  "src/utils/crypto.js": {
+    "mtime": 1792144112.1973188,
+    "seen": 1792469945.9755177,
+    "ast_hash": "242d6a90f7635126501672ac35e453e3",
+    "semantic_hash": "242d6a90f7635126501672ac35e453e3"
+  },
+  "src/utils/customAlert.js": {
+    "mtime": 1792402695.9545903,
+    "seen": 1792469945.975519,
+    "ast_hash": "4a367c966c214c923b90238e8d0ec1f4",
+    "semantic_hash": "4a367c966c214c923b90238e8d0ec1f4"
+  },
+  "src/utils/format.ts": {
+    "mtime": 1792144112.1973188,
+    "seen": 1792469945.97552,
+    "ast_hash": "531a0fa39c68e80251356b5af8a9b37d",
+    "semantic_hash": "531a0fa39c68e80251356b5af8a9b37d"
+  },
+  "src/utils/formatters.js": {
+    "mtime": 1792144836.119082,
+    "seen": 1792469945.975521,
+    "ast_hash": "aed353bb7305c9a1f474752ea7b60342",
+    "semantic_hash": "aed353bb7305c9a1f474752ea7b60342"
+  },
+  "src/utils/storage.js": {
+    "mtime": 1792383624.3055482,
+    "seen": 1792469945.975522,
+    "ast_hash": "0ea38473448a0abb6f315604ac0e1240",
+    "semantic_hash": "0ea38473448a0abb6f315604ac0e1240"
+  },
+  "src/utils/theme.js": {
+    "mtime": 1792144836.119082,
+    "seen": 1792469945.975523,
+    "ast_hash": "817e61d062f54b3533baa27440ab3208",
+    "semantic_hash": "817e61d062f54b3533baa27440ab3208"
+  },
+  "tsconfig.json": {
+    "mtime": 1792144112.1973188,
+    "seen": 1792469945.9755242,
+    "ast_hash": "fc5aeefabecedcb47aa7fd1e236c67ab",
+    "semantic_hash": "fc5aeefabecedcb47aa7fd1e236c67ab"
+  },
+  ".agents/skills/caveman/README.md": {
+    "mtime": 1792466845.7302694,
+    "seen": 1792469945.9755251,
+    "ast_hash": "c6565f2f610ce9f2bab13b09009d8c2b",
+    "semantic_hash": "c6565f2f610ce9f2bab13b09009d8c2b"
+  },
+  ".agents/skills/caveman/SKILL.md": {
+    "mtime": 1792466845.7302694,
+    "seen": 1792469945.975526,
+    "ast_hash": "56b2f9db32197569a4a53b69bd8e859d",
+    "semantic_hash": "56b2f9db32197569a4a53b69bd8e859d"
+  },
+  "AGENTS.md": {
+    "mtime": 1792144112.1856842,
+    "seen": 1792469945.9755292,
+    "ast_hash": "233d1484702a528f5dcb4333cd01bb43",
+    "semantic_hash": "233d1484702a528f5dcb4333cd01bb43"
+  },
+  "CLAUDE.md": {
+    "mtime": 1792144112.1856842,
+    "seen": 1792469945.9755318,
+    "ast_hash": "5c27369b226fcf2be8a6cfe52224e767",
+    "semantic_hash": "5c27369b226fcf2be8a6cfe52224e767"
+  },
+  "desain.md": {
+    "mtime": 1792144836.106082,
+    "seen": 1792469945.9755328,
+    "ast_hash": "894f18cebccfab7646077266a03d79f4",
+    "semantic_hash": "894f18cebccfab7646077266a03d79f4"
+  },
+  "assets/android-icon-background.png": {
+    "mtime": 1792144112.1856842,
+    "seen": 1792469945.975534,
+    "ast_hash": "2d65569cc0e2afdcea0af9f9902d4173",
+    "semantic_hash": "2d65569cc0e2afdcea0af9f9902d4173"
+  },
+  "assets/android-icon-foreground.png": {
+    "mtime": 1792144112.1864538,
+    "seen": 1792469945.9755352,
+    "ast_hash": "72e71a9c846c6aa4ae32476641a00e18",
+    "semantic_hash": "72e71a9c846c6aa4ae32476641a00e18"
+  },
+  "assets/android-icon-monochrome.png": {
+    "mtime": 1792144112.1864538,
+    "seen": 1792469945.975536,
+    "ast_hash": "1e097dab989759fc0b69440092ca22cd",
+    "semantic_hash": "1e097dab989759fc0b69440092ca22cd"
+  },
+  "assets/favicon.png": {
+    "mtime": 1792144112.1864538,
+    "seen": 1792469945.975537,
+    "ast_hash": "d9f444efbdfbe7931aa93beada07318a",
+    "semantic_hash": "d9f444efbdfbe7931aa93beada07318a"
+  },
+  "assets/icon.png": {
+    "mtime": 1792144112.1864538,
+    "seen": 1792469945.9755383,
+    "ast_hash": "cb975bba2216ce10a60e6c0ffe9941a2",
+    "semantic_hash": "cb975bba2216ce10a60e6c0ffe9941a2"
+  },
+  "assets/splash-icon.png": {
+    "mtime": 1792144112.1873891,
+    "seen": 1792469945.9755392,
+    "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": "97dae5a0e62ad8551d8a31897b425e63"
+  }
+}

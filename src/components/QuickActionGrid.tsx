@@ -23,6 +23,12 @@ import {
   Users,
   Compass,
   Calendar,
+  Layers,
+  CreditCard,
+  Database,
+  FileText,
+  CheckCheck,
+  Settings,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -111,13 +117,6 @@ export const QuickActionGrid: React.FC<QuickActionGridProps> = ({
       disabledMessage: 'Fitur ini butuh koneksi internet',
     },
     {
-      id: 'denah',
-      label: 'Denah',
-      iconName: 'MapPin',
-      bg: actionTints.denah.bg,
-      iconColor: actionTints.denah.icon,
-    },
-    {
       id: 'darurat',
       label: 'Darurat',
       iconName: 'PhoneCall',
@@ -154,6 +153,18 @@ export const QuickActionGrid: React.FC<QuickActionGridProps> = ({
         return <Compass size={size} color={color} strokeWidth={strokeWidth} />;
       case 'Calendar':
         return <Calendar size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'Layers':
+        return <Layers size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'CreditCard':
+        return <CreditCard size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'Database':
+        return <Database size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'FileText':
+        return <FileText size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'CheckCheck':
+        return <CheckCheck size={size} color={color} strokeWidth={strokeWidth} />;
+      case 'Settings':
+        return <Settings size={size} color={color} strokeWidth={strokeWidth} />;
       default:
         return <Receipt size={size} color={color} strokeWidth={strokeWidth} />;
     }

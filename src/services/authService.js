@@ -331,19 +331,17 @@ export function filterResidentsByRole(residents = [], currentUser = null, rts = 
     return residents
   }
   if (currentUser.role === 'rw') {
-    if (currentUser.rw_id) {
-      return residents.filter((r) => {
-        if (r.rw_id && r.rw_id === currentUser.rw_id) return true
-        const rt = (rts || []).find((x) => x.id === r.rt_id)
-        return rt?.rw_id === currentUser.rw_id
-      })
-    }
-    return residents
+    const rwId = currentUser.rw_id || 'rw-01'
+    return residents.filter((r) => {
+      if (r.rw_id) return r.rw_id === rwId
+      const rt = (rts || []).find((x) => x.id === r.rt_id)
+      return rt?.rw_id === rwId
+    })
   }
   if (currentUser.role === 'bendahara' || currentUser.role === 'pengurus') {
     if (currentUser.rw_id) {
       return residents.filter((r) => {
-        if (r.rw_id && r.rw_id === currentUser.rw_id) return true
+        if (r.rw_id) return r.rw_id === currentUser.rw_id
         const rt = (rts || []).find((x) => x.id === r.rt_id)
         return rt?.rw_id === currentUser.rw_id
       })
@@ -351,10 +349,12 @@ export function filterResidentsByRole(residents = [], currentUser = null, rts = 
     return residents
   }
   if (currentUser.role === 'rt') {
-    return residents.filter((r) => r.rt_id === currentUser.rt_id)
+    const rtId = currentUser.rt_id || 'rt-01-01'
+    return residents.filter((r) => r.rt_id === rtId)
   }
   if (currentUser.role === 'warga') {
-    return residents.filter((r) => r.id === currentUser.resident_id)
+    const targetWargaId = currentUser.resident_id || currentUser.id
+    return residents.filter((r) => r.id === targetWargaId)
   }
   return []
 }
@@ -366,23 +366,21 @@ export function filterBillsByRole(bills = [], residents = [], currentUser = null
   }
 
   if (currentUser.role === 'rw') {
-    if (currentUser.rw_id) {
-      const rwWargaIds = new Set(
-        residents
-          .filter((r) => {
-            if (r.rw_id && r.rw_id === currentUser.rw_id) return true
-            const rt = (rts || []).find((x) => x.id === r.rt_id)
-            return rt?.rw_id === currentUser.rw_id
-          })
-          .map((r) => r.id)
-      )
-      return bills.filter((b) => {
-        if (rwWargaIds.has(b.wargaId)) return true
-        if (b.target_payment_owner === currentUser.rw_id) return true
-        return false
-      })
-    }
-    return bills
+    const rwId = currentUser.rw_id || 'rw-01'
+    const rwWargaIds = new Set(
+      residents
+        .filter((r) => {
+          if (r.rw_id) return r.rw_id === rwId
+          const rt = (rts || []).find((x) => x.id === r.rt_id)
+          return rt?.rw_id === rwId
+        })
+        .map((r) => r.id)
+    )
+    return bills.filter((b) => {
+      if (rwWargaIds.has(b.wargaId)) return true
+      if (b.target_payment_owner === rwId) return true
+      return false
+    })
   }
 
   if (currentUser.role === 'bendahara') {

@@ -581,7 +581,15 @@ export function AppProvider({ children }) {
   const currentRT = rts.find((r) => r.id === userRtId) || rts[0] || null
   const userRwId = currentUser?.rw_id || currentWarga?.rw_id || currentRT?.rw_id || 'rw-01'
   const currentRW = rws.find((r) => r.id === userRwId) || rws[0] || null
-  const scopedRts = currentUser?.rw_id ? rts.filter((r) => r.rw_id === currentUser.rw_id) : rts
+  const scopedRts = isAdmin
+    ? rts
+    : isRT
+    ? (currentRT ? [currentRT] : rts.filter((r) => r.id === userRtId))
+    : isRW
+    ? rts.filter((r) => r.rw_id === userRwId)
+    : currentUser?.rw_id
+    ? rts.filter((r) => r.rw_id === currentUser.rw_id)
+    : rts
 
   // Role-scoped data
   const scopedWarga = filterResidentsByRole(warga, effectiveUser, rts)

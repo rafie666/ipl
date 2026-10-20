@@ -61,6 +61,7 @@ import RTHeroCard from '../components/RTHeroCard'
 import RWHeroCard from '../components/RWHeroCard'
 import BendaharaHeroCard from '../components/BendaharaHeroCard'
 import PengurusHeroCard from '../components/PengurusHeroCard'
+import AdminHeroCard from '../components/AdminHeroCard'
 import QuickActionGrid from '../components/QuickActionGrid'
 import KasWidget from '../components/KasWidget'
 import TransactionListItem from '../components/TransactionListItem'
@@ -376,8 +377,25 @@ export default function DashboardScreen({ navigation }) {
           />
         }
       >
+        {/* ===================== ADMIN IT: KARTU UTAMA PALING ATAS ===================== */}
+        {isAdmin && (
+          <View style={{ marginBottom: 18 }}>
+            <AdminHeroCard
+              adminName={currentUser?.name || 'Super Administrator'}
+              totalWarga={scopedWarga?.length || 0}
+              totalRT={rts?.length || 0}
+              totalKas={saldoKas || 0}
+              serverStatus="Online"
+              isCloudConnected={true}
+              onPressSettings={() => navigation.navigate('Pengaturan')}
+              onPressManageUsers={() => navigation.navigate('WargaList')}
+              onPressCard={() => navigation.navigate('Pengaturan')}
+            />
+          </View>
+        )}
+
         {/* ===================== DUAL-MODE VIEW SWITCHER BANNER ===================== */}
-        {hasDualRole && !isRT && !isRW && (
+        {hasDualRole && !isRT && !isRW && !isAdmin && (
           <View style={styles.bendaharaStatusCard}>
             <View style={styles.bendaharaStatusTopRow}>
               <View
@@ -571,54 +589,7 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ===================== §4.2 QUICK ACTION GRID ===================== */}
-        {isResidentView && (
-          <View style={{ marginBottom: 24 }}>
-            <View style={styles.v2SectionHeader}>
-              <Text style={styles.v2SectionTitle}>Aksi Cepat</Text>
-            </View>
-            <QuickActionGrid
-              badges={{
-                lapor: aduanUnreadCount > 0 ? aduanUnreadCount : undefined,
-                surat: suratUnreadCount > 0 ? suratUnreadCount : undefined,
-              }}
-              onActionPress={(actionId) => {
-                switch (actionId) {
-                  case 'bayar':
-                    if (tagihanBulanIni) {
-                      navigation.navigate('DetailTagihan', { tagihan: tagihanBulanIni });
-                    } else {
-                      navigation.navigate('TagihanTab');
-                    }
-                    break;
-                  case 'lapor':
-                    navigation.navigate('Pengaduan');
-                    break;
-                  case 'surat':
-                    navigation.navigate('Surat');
-                    break;
-                  case 'satpam':
-                    navigation.navigate('JadwalSatpam');
-                    break;
-                  case 'acara':
-                    navigation.navigate('Events');
-                    break;
-                  case 'kas':
-                    navigation.navigate('Kas');
-                    break;
-                  case 'denah':
-                    navigation.navigate('PetaWarga');
-                    break;
-                  case 'darurat':
-                    navigation.navigate('KontakDarurat');
-                    break;
-                  default:
-                    break;
-                }
-              }}
-            />
-          </View>
-        )}
+
 
         {/* ===================== §5.1.3 KAS WIDGET ===================== */}
         {isResidentView && (
@@ -733,101 +704,6 @@ export default function DashboardScreen({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* 3. AKSI CEPAT BENDAHARA (GRID BERSIH & PRESISI SEPERTI WARGA) */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={styles.v2SectionHeader}>
-                <Text style={styles.v2SectionTitle}>Aksi Cepat Bendahara</Text>
-              </View>
-              <QuickActionGrid
-                actions={[
-                  {
-                    id: 'kas',
-                    label: 'Buku Kas',
-                    iconName: 'Wallet',
-                    bg: '#ECFDF5',
-                    iconColor: '#059669',
-                  },
-                  {
-                    id: 'verifikasi',
-                    label: 'Verifikasi IPL',
-                    iconName: 'Receipt',
-                    bg: '#FEF3C7',
-                    iconColor: '#D97706',
-                    badgeCount: pendingCekCount > 0 ? pendingCekCount : undefined,
-                  },
-                  {
-                    id: 'tagihan',
-                    label: 'Tagihan Warga',
-                    iconName: 'FileCheck',
-                    bg: '#EFF6FF',
-                    iconColor: '#2563EB',
-                  },
-                  {
-                    id: 'iuran',
-                    label: 'Iuran Kegiatan',
-                    iconName: 'PartyPopper',
-                    bg: '#FFF7ED',
-                    iconColor: '#EA580C',
-                  },
-                  {
-                    id: 'warga',
-                    label: 'Data Warga',
-                    iconName: 'Users',
-                    bg: '#F0FDFA',
-                    iconColor: '#0D9488',
-                  },
-                  {
-                    id: 'lapor',
-                    label: 'Aduan Warga',
-                    iconName: 'MessageSquareWarning',
-                    bg: '#FFFBEB',
-                    iconColor: '#D97706',
-                    badgeCount: aduanUnreadCount > 0 ? aduanUnreadCount : undefined,
-                  },
-                  {
-                    id: 'surat',
-                    label: 'Surat RT',
-                    iconName: 'FileText',
-                    bg: '#EEF2FF',
-                    iconColor: '#4F46E5',
-                    badgeCount: suratUnreadCount > 0 ? suratUnreadCount : undefined,
-                  },
-                  {
-                    id: 'darurat',
-                    label: 'Kontak Darurat',
-                    iconName: 'PhoneCall',
-                    bg: '#FFF1F2',
-                    iconColor: '#E11D48',
-                  },
-                ]}
-                onActionPress={(actionId) => {
-                  switch (actionId) {
-                    case 'kas':
-                      navigation.navigate('Kas');
-                      break;
-                    case 'verifikasi':
-                    case 'tagihan':
-                      navigation.navigate('TagihanTab');
-                      break;
-                    case 'iuran':
-                      navigation.navigate('Events');
-                      break;
-                    case 'warga':
-                      navigation.navigate('WargaList');
-                      break;
-                    case 'lapor':
-                      navigation.navigate('Pengaduan');
-                      break;
-                    case 'surat':
-                      navigation.navigate('Surat');
-                      break;
-                    case 'darurat':
-                      navigation.navigate('KontakDarurat');
-                      break;
-                  }
-                }}
-              />
-            </View>
 
             {/* 4. KAS WIDGET */}
             <View style={{ marginBottom: 24 }}>
@@ -944,102 +820,6 @@ export default function DashboardScreen({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* 3. AKSI CEPAT PENGURUS (GRID BERSIH & PRESISI SEPERTI WARGA) */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={styles.v2SectionHeader}>
-                <Text style={styles.v2SectionTitle}>Aksi Cepat Pengurus</Text>
-              </View>
-              <QuickActionGrid
-                actions={[
-                  {
-                    id: 'lapor',
-                    label: 'Aduan Fasum',
-                    iconName: 'MessageSquareWarning',
-                    bg: '#FEE2E2',
-                    iconColor: '#DC2626',
-                    badgeCount: (pengaduan?.filter((p) => p.status !== 'Selesai')?.length || 0) > 0 ? pengaduan.filter((p) => p.status !== 'Selesai').length : undefined,
-                  },
-                  {
-                    id: 'surat',
-                    label: 'Surat Warga',
-                    iconName: 'FileCheck',
-                    bg: '#EFF6FF',
-                    iconColor: '#2563EB',
-                    badgeCount: (surat?.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan')?.length || 0) > 0 ? surat.filter((s) => s.status === 'Menunggu' || s.status === 'Diajukan').length : undefined,
-                  },
-                  {
-                    id: 'satpam',
-                    label: 'Jadwal Satpam',
-                    iconName: 'ShieldCheck',
-                    bg: '#ECFDF5',
-                    iconColor: '#059669',
-                  },
-                  {
-                    id: 'denah',
-                    label: 'Peta Fasum',
-                    iconName: 'Compass',
-                    bg: '#F0F9FF',
-                    iconColor: '#0284C7',
-                  },
-                  {
-                    id: 'acara',
-                    label: 'Acara Warga',
-                    iconName: 'PartyPopper',
-                    bg: '#FFF7ED',
-                    iconColor: '#EA580C',
-                  },
-                  {
-                    id: 'kas',
-                    label: 'Buku Kas',
-                    iconName: 'Wallet',
-                    bg: '#F0FDFA',
-                    iconColor: '#0D9488',
-                  },
-                  {
-                    id: 'warga',
-                    label: 'Data Warga',
-                    iconName: 'Users',
-                    bg: '#EEF2FF',
-                    iconColor: '#4F46E5',
-                  },
-                  {
-                    id: 'darurat',
-                    label: 'Kontak Darurat',
-                    iconName: 'PhoneCall',
-                    bg: '#FFF1F2',
-                    iconColor: '#E11D48',
-                  },
-                ]}
-                onActionPress={(actionId) => {
-                  switch (actionId) {
-                    case 'lapor':
-                      navigation.navigate('Pengaduan');
-                      break;
-                    case 'surat':
-                      navigation.navigate('Surat');
-                      break;
-                    case 'satpam':
-                      navigation.navigate('JadwalSatpam');
-                      break;
-                    case 'denah':
-                      navigation.navigate('PetaWarga');
-                      break;
-                    case 'acara':
-                      navigation.navigate('Events');
-                      break;
-                    case 'kas':
-                      navigation.navigate('Kas');
-                      break;
-                    case 'warga':
-                      navigation.navigate('WargaList');
-                      break;
-                    case 'darurat':
-                      navigation.navigate('KontakDarurat');
-                      break;
-                  }
-                }}
-              />
-            </View>
 
             {/* 4. KAS WIDGET */}
             <View style={{ marginBottom: 24 }}>
@@ -1154,105 +934,6 @@ export default function DashboardScreen({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* 3. AKSI CEPAT RT (GRID BERSIH & PRESISI SEPERTI WARGA) */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={styles.v2SectionHeader}>
-                <Text style={styles.v2SectionTitle}>Aksi Cepat RT</Text>
-              </View>
-              <QuickActionGrid
-                actions={[
-                  {
-                    id: 'warga',
-                    label: 'Data Warga',
-                    iconName: 'Users',
-                    bg: '#ECFDF5',
-                    iconColor: '#059669',
-                  },
-                  {
-                    id: 'tagihan',
-                    label: 'Tagihan RT',
-                    iconName: 'Receipt',
-                    bg: '#EFF6FF',
-                    iconColor: '#2563EB',
-                    badgeCount: pendingCekCount > 0 ? pendingCekCount : undefined,
-                  },
-                  {
-                    id: 'kas',
-                    label: 'Buku Kas',
-                    iconName: 'Wallet',
-                    bg: '#F0FDFA',
-                    iconColor: '#0D9488',
-                  },
-                  {
-                    id: 'denah',
-                    label: 'Peta Wilayah',
-                    iconName: 'Compass',
-                    bg: '#F0F9FF',
-                    iconColor: '#0284C7',
-                  },
-                  {
-                    id: 'surat',
-                    label: 'Surat RT',
-                    iconName: 'FileCheck',
-                    bg: '#EEF2FF',
-                    iconColor: '#4F46E5',
-                    badgeCount: suratUnreadCount > 0 ? suratUnreadCount : undefined,
-                  },
-                  {
-                    id: 'lapor',
-                    label: 'Aduan Warga',
-                    iconName: 'MessageSquareWarning',
-                    bg: '#FFFBEB',
-                    iconColor: '#D97706',
-                    badgeCount: aduanUnreadCount > 0 ? aduanUnreadCount : undefined,
-                  },
-                  {
-                    id: 'acara',
-                    label: 'Kegiatan/Iuran',
-                    iconName: 'PartyPopper',
-                    bg: '#FFF7ED',
-                    iconColor: '#EA580C',
-                  },
-                  {
-                    id: 'darurat',
-                    label: 'Kontak Darurat',
-                    iconName: 'PhoneCall',
-                    bg: '#FFF1F2',
-                    iconColor: '#E11D48',
-                  },
-                ]}
-                onActionPress={(actionId) => {
-                  switch (actionId) {
-                    case 'warga':
-                      navigation.navigate('WargaList')
-                      break
-                    case 'tagihan':
-                      navigation.navigate('TagihanTab')
-                      break
-                    case 'kas':
-                      navigation.navigate('Kas')
-                      break
-                    case 'denah':
-                      navigation.navigate('PetaWarga')
-                      break
-                    case 'surat':
-                      navigation.navigate('Surat')
-                      break
-                    case 'lapor':
-                      navigation.navigate('Pengaduan')
-                      break
-                    case 'acara':
-                      navigation.navigate('Events')
-                      break
-                    case 'darurat':
-                      navigation.navigate('KontakDarurat')
-                      break
-                    default:
-                      break
-                  }
-                }}
-              />
-            </View>
 
             {/* 4. BUKU KAS RT (KAS WIDGET) */}
             <View style={{ marginBottom: 24 }}>
@@ -1370,105 +1051,6 @@ export default function DashboardScreen({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* 3. AKSI KOORDINASI RW (GRID BERSIH & PRESISI 4 KOLOM) */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={styles.v2SectionHeader}>
-                <Text style={styles.v2SectionTitle}>Aksi Koordinasi RW</Text>
-              </View>
-              <QuickActionGrid
-                actions={[
-                  {
-                    id: 'warga',
-                    label: 'Warga RW',
-                    iconName: 'Users',
-                    bg: '#FEF2F2',
-                    iconColor: '#DC2626',
-                  },
-                  {
-                    id: 'tagihan',
-                    label: 'Tagihan RW',
-                    iconName: 'Receipt',
-                    bg: '#EFF6FF',
-                    iconColor: '#2563EB',
-                    badgeCount: pendingCekCount > 0 ? pendingCekCount : undefined,
-                  },
-                  {
-                    id: 'kas',
-                    label: 'Kas Wilayah',
-                    iconName: 'Wallet',
-                    bg: '#ECFDF5',
-                    iconColor: '#059669',
-                  },
-                  {
-                    id: 'denah',
-                    label: 'Peta Wilayah',
-                    iconName: 'Compass',
-                    bg: '#F0F9FF',
-                    iconColor: '#0284C7',
-                  },
-                  {
-                    id: 'surat',
-                    label: 'Layanan Surat',
-                    iconName: 'FileCheck',
-                    bg: '#EEF2FF',
-                    iconColor: '#4F46E5',
-                    badgeCount: suratUnreadCount > 0 ? suratUnreadCount : undefined,
-                  },
-                  {
-                    id: 'lapor',
-                    label: 'Aduan Warga',
-                    iconName: 'MessageSquareWarning',
-                    bg: '#FFFBEB',
-                    iconColor: '#D97706',
-                    badgeCount: aduanUnreadCount > 0 ? aduanUnreadCount : undefined,
-                  },
-                  {
-                    id: 'acara',
-                    label: 'Agenda RW',
-                    iconName: 'PartyPopper',
-                    bg: '#FFF7ED',
-                    iconColor: '#EA580C',
-                  },
-                  {
-                    id: 'darurat',
-                    label: 'Kontak Darurat',
-                    iconName: 'PhoneCall',
-                    bg: '#FFF1F2',
-                    iconColor: '#E11D48',
-                  },
-                ]}
-                onActionPress={(actionId) => {
-                  switch (actionId) {
-                    case 'warga':
-                      navigation.navigate('WargaList')
-                      break
-                    case 'tagihan':
-                      navigation.navigate('TagihanTab')
-                      break
-                    case 'kas':
-                      navigation.navigate('Kas')
-                      break
-                    case 'denah':
-                      navigation.navigate('PetaWarga')
-                      break
-                    case 'surat':
-                      navigation.navigate('Surat')
-                      break
-                    case 'lapor':
-                      navigation.navigate('Pengaduan')
-                      break
-                    case 'acara':
-                      navigation.navigate('Events')
-                      break
-                    case 'darurat':
-                      navigation.navigate('KontakDarurat')
-                      break
-                    default:
-                      break
-                  }
-                }}
-              />
-            </View>
 
             {/* 4. BUKU KAS WILAYAH RW (KAS WIDGET) */}
             <View style={{ marginBottom: 24 }}>
@@ -1540,143 +1122,8 @@ export default function DashboardScreen({ navigation }) {
 
         {/* ===================== ADMIN IT: SUPER ADMINISTRATOR ===================== */}
         {isAdmin && (
-          <View style={styles.bendaharaFinancialContainer}>
-            {/* 1. KARTU UTAMA: PORTAL SUPER ADMINISTRATOR */}
-            <View style={styles.bendaharaMainFinanceCard}>
-              <View style={styles.bendaharaFinanceHeaderRow}>
-                <View style={[styles.bendaharaFinanceIconCircle, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                  <Shield size={22} color="#047857" strokeWidth={2.2} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.bendaharaFinancePreTitle, { color: '#047857' }]}>PORTAL SUPER ADMINISTRATOR (IT)</Text>
-                  <Text style={styles.bendaharaFinanceMainTitle}>Manajemen Sistem & Keamanan</Text>
-                </View>
-                <View style={[styles.bendaharaRoleBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                  <Text style={[styles.bendaharaRoleBadgeText, { color: '#047857' }]}>Admin IT</Text>
-                </View>
-              </View>
+          <View style={{ marginBottom: 12 }}>
 
-              {/* Stack Stat Cards */}
-              <View style={styles.bendaharaStatsStack}>
-                {/* Stat 1: Database Pengguna */}
-                <View style={[styles.bendaharaStatCardLunas, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#DCFCE7' }]}>
-                        <Users size={16} color="#047857" strokeWidth={2.5} />
-                      </View>
-                      <Text style={[styles.bendaharaStatLabelGreen, { color: '#047857' }]}>Database Pengguna Terdaftar</Text>
-                    </View>
-                    <View style={[styles.bendaharaStatWargaPillGreen, { backgroundColor: '#DCFCE7' }]}>
-                      <Text style={[styles.bendaharaStatWargaTextGreen, { color: '#047857' }]}>
-                        Akun Aktif
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.bendaharaStatAmountGreen, { color: '#047857' }]}>
-                    {scopedWarga?.length || 0} Akun Warga
-                  </Text>
-                </View>
-
-                {/* Stat 2: Status Database Cloud */}
-                <View style={styles.bendaharaStatCardLunas}>
-                  <View style={styles.bendaharaStatCardTopRow}>
-                    <View style={styles.bendaharaStatIconLabelWrap}>
-                      <View style={[styles.bendaharaMiniStatIconCircle, { backgroundColor: '#DCFCE7' }]}>
-                        <CheckCircle2 size={16} color="#059669" strokeWidth={2.5} />
-                      </View>
-                      <Text style={styles.bendaharaStatLabelGreen}>Status Koneksi Server</Text>
-                    </View>
-                    <View style={styles.bendaharaStatWargaPillGreen}>
-                      <Text style={styles.bendaharaStatWargaTextGreen}>
-                        Live Cloud
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.bendaharaStatAmountGreen}>
-                    Online (Normal)
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* 2. MENU OPERASIONAL ADMIN */}
-            <View style={styles.bendaharaOperasionalSection}>
-              <View style={styles.bendaharaOperasionalHeaderRow}>
-                <Text style={styles.bendaharaSectionTitle}>Menu Super Administrator</Text>
-                <Text style={styles.bendaharaSectionSub}>Akses kontrol sistem, master data & konfigurasi</Text>
-              </View>
-
-              <View style={styles.bendaharaActionList}>
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Pengaturan')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                    <Settings size={20} color="#047857" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Pengaturan Sistem & Server</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Konfigurasi API, token Moota, Supabase & backup
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('WargaList')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                    <Users size={20} color="#059669" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Master Data Seluruh Warga</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Kelola registrasi, verifikasi KTP & penetapan unit
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('Kas')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                    <Wallet size={20} color="#047857" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Transparansi Kas & Pembukuan</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Audit arus kas masuk/keluar di semua scope RT & RW
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.bendaharaActionCard}
-                  onPress={() => navigation.navigate('DataAkses')}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.bendaharaActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                    <ShieldCheck size={20} color="#047857" strokeWidth={2.2} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bendaharaActionCardTitle}>Demo & Role Switcher</Text>
-                    <Text style={styles.bendaharaActionCardDesc} numberOfLines={1}>
-                      Uji coba simulasi tampilan berbagai akun dan wewenang
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color="#94A3B8" strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-            </View>
           </View>
         )}
 
