@@ -3,10 +3,11 @@ import { Platform } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import * as Notifications from 'expo-notifications'
 import {
   handleNotificationClick,
-  setupAndroidNotificationChannels
+  setupAndroidNotificationChannels,
+  ENABLE_PUSH_NOTIFICATIONS,
+  isExpoGo
 } from '../services/notificationService'
 import {
   LayoutDashboard,
@@ -18,7 +19,8 @@ import {
   Settings,
   Layers,
   Wallet,
-  ClipboardList
+  ClipboardList,
+  Zap
 } from 'lucide-react-native'
 
 import { useApp } from '../context/AppContext'
@@ -49,6 +51,14 @@ import KontakDaruratScreen from '../screens/KontakDaruratScreen'
 import PetaWargaScreen from '../screens/PetaWargaScreen'
 import DataAksesScreen from '../screens/DataAksesScreen'
 import JadwalSatpamScreen from '../screens/JadwalSatpamScreen'
+
+// Aksi Cepat Full Screens
+import RekeningBankScreen from '../screens/RekeningBankScreen'
+import PosIuranScreen from '../screens/PosIuranScreen'
+import IdentitasLingkunganScreen from '../screens/IdentitasLingkunganScreen'
+import NotifikasiPerangkatScreen from '../screens/NotifikasiPerangkatScreen'
+import MootaGatewayScreen from '../screens/MootaGatewayScreen'
+import EditProfileWargaScreen from '../screens/EditProfileWargaScreen'
 
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
@@ -154,13 +164,13 @@ function MainTabNavigator() {
         }}
       />
 
-      {/* 5. Pengaturan */}
+      {/* 5. Aksi Cepat */}
       <Tab.Screen
         name="PengaturanTab"
         component={PengaturanScreen}
         options={{
-          tabBarLabel: 'Pengaturan',
-          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />
+          tabBarLabel: 'Aksi Cepat',
+          tabBarIcon: ({ color, size }) => <Zap size={size} color={color} />
         }}
       />
     </Tab.Navigator>
@@ -172,30 +182,38 @@ export default function RootNavigator() {
   const navigationRef = useRef(null)
 
   useEffect(() => {
-    // Push notifications & channels are native mobile features (Android / iOS)
-    if (Platform.OS === 'web') return
+    // Matikan notifikasi di web, di Expo Go, atau jika toggle notifikasi dinonaktifkan
+    if (Platform.OS === 'web' || !ENABLE_PUSH_NOTIFICATIONS || isExpoGo) return
 
-    // 1. Setup Android channels
-    setupAndroidNotificationChannels().catch(() => {})
+    let receivedSub = null
+    let responseSub = null
 
-    // 2. Listener saat notifikasi diterima ketika aplikasi aktif (Foreground)
-    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('[Notification Received Foreground]:', notification?.request?.content?.title)
-    })
+    try {
+      const Notifications = require('expo-notifications')
+      if (!Notifications) return
 
-    // 3. Listener saat pengguna mengetuk notifikasi (Background / Killed / Foreground)
-    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
-      handleNotificationClick(response, navigationRef.current)
-    })
+      // 1. Setup Android channels
+      setupAndroidNotificationChannels().catch(() => {})
 
-    // 4. Periksa apakah app dibuka dari notifikasi awal (cold start)
-    Notifications.getLastNotificationResponseAsync?.()
-      ?.then((initialResponse) => {
-        if (initialResponse) {
-          handleNotificationClick(initialResponse, navigationRef.current)
-        }
+      // 2. Listener saat notifikasi diterima ketika aplikasi aktif (Foreground)
+      receivedSub = Notifications.addNotificationReceivedListener?.((notification) => {
+        console.log('[Notification Received Foreground]:', notification?.request?.content?.title)
       })
-      ?.catch(() => {})
+
+      // 3. Listener saat pengguna mengetuk notifikasi (Background / Killed / Foreground)
+      responseSub = Notifications.addNotificationResponseReceivedListener?.((response) => {
+        handleNotificationClick(response, navigationRef.current)
+      })
+
+      // 4. Periksa apakah app dibuka dari notifikasi awal (cold start)
+      Notifications.getLastNotificationResponseAsync?.()
+        ?.then((initialResponse) => {
+          if (initialResponse) {
+            handleNotificationClick(initialResponse, navigationRef.current)
+          }
+        })
+        ?.catch(() => {})
+    } catch (_) {}
 
     return () => {
       receivedSub?.remove?.()
@@ -232,7 +250,16 @@ export default function RootNavigator() {
         <Stack.Screen name="Tagihan" component={TagihanScreen} />
         <Stack.Screen name="Layanan" component={LayananScreen} />
         <Stack.Screen name="Pengaturan" component={PengaturanScreen} />
+        <Stack.Screen name="AksiCepat" component={PengaturanScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+
+        {/* Aksi Cepat Full Screens */}
+        <Stack.Screen name="RekeningBank" component={RekeningBankScreen} />
+        <Stack.Screen name="PosIuran" component={PosIuranScreen} />
+        <Stack.Screen name="IdentitasLingkungan" component={IdentitasLingkunganScreen} />
+        <Stack.Screen name="NotifikasiPerangkat" component={NotifikasiPerangkatScreen} />
+        <Stack.Screen name="MootaGateway" component={MootaGatewayScreen} />
+        <Stack.Screen name="EditProfileWarga" component={EditProfileWargaScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   )

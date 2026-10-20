@@ -17,6 +17,7 @@ import {
   Info,
   Trash2,
   HelpCircle,
+  LogOut,
   X
 } from 'lucide-react-native'
 import { registerAlertSubscriber, closeCustomAlert } from '../utils/customAlert'
@@ -120,7 +121,22 @@ export default function CustomAlertModal() {
 
   // Determine icon & theme colors based on type / title
   const titleLower = alertState.title.toLowerCase()
-  const isDelete = titleLower.includes('hapus') || alertState.buttons.some((b) => b?.style === 'destructive')
+  const msgLower = (alertState.message || '').toLowerCase()
+  const hasDestructive = alertState.buttons.some((b) => b?.style === 'destructive')
+  const isLogout =
+    alertState.type === 'logout' ||
+    titleLower.includes('keluar') ||
+    titleLower.includes('logout') ||
+    msgLower.includes('keluar dari akun') ||
+    msgLower.includes('keluar dari sesi') ||
+    alertState.buttons.some((b) => {
+      const txt = (b?.text || '').toLowerCase()
+      return (txt.includes('keluar') || txt.includes('logout')) && b?.style === 'destructive'
+    })
+
+  const isDelete =
+    !isLogout &&
+    (titleLower.includes('hapus') || msgLower.includes('hapus') || hasDestructive)
   const type = alertState.type
 
   let theme = {
@@ -131,7 +147,15 @@ export default function CustomAlertModal() {
     primaryBtnText: '#FFFFFF'
   }
 
-  if (type === 'success') {
+  if (isLogout) {
+    theme = {
+      icon: <LogOut size={30} color={colors.danger} strokeWidth={2.4} />,
+      iconBg: '#FEF2F2',
+      iconBorder: '#FECACA',
+      primaryBtnBg: colors.danger,
+      primaryBtnText: '#FFFFFF'
+    }
+  } else if (type === 'success') {
     theme = {
       icon: <CheckCircle2 size={32} color={colors.success} strokeWidth={2.5} />,
       iconBg: '#ECFDF3',

@@ -1,5 +1,3 @@
-import * as Notifications from 'expo-notifications'
-import * as Device from 'expo-device'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -7,6 +5,29 @@ import { supabase, isSupabaseConfigured } from '../api/supabase'
 
 export const STORAGE_KEY_PUSH_TOKEN = '@ipl_expo_push_token'
 export const STORAGE_KEY_LARAVEL_API_URL = '@ipl_laravel_api_url'
+
+// Master toggle untuk notifikasi push / native (Matikan jika di Expo Go atau mode offline/dev)
+export const ENABLE_PUSH_NOTIFICATIONS = false
+
+export const isExpoGo =
+  Constants?.executionEnvironment === 'storeClient' ||
+  Constants?.appOwnership === 'expo'
+
+// Helper lazy loader agar expo-notifications tidak diinisialisasi jika dimatikan
+let _notificationsModule = null
+export function getNotifications() {
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo || Platform?.OS === 'web') {
+    return null
+  }
+  if (!_notificationsModule) {
+    try {
+      _notificationsModule = require('expo-notifications')
+    } catch (_) {
+      _notificationsModule = null
+    }
+  }
+  return _notificationsModule
+}
 
 // Default fallback Laravel API URL
 // 10.0.2.2 is Android Emulator alias for Host localhost
@@ -19,26 +40,32 @@ export const DEFAULT_LARAVEL_API_URL =
       })
     : 'http://10.0.2.2:8000'
 
-// Configure how notifications appear when the app is in the foreground
-if (Platform?.OS !== 'web' && Notifications?.setNotificationHandler) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true
-    })
-  })
+// Configure how notifications appear when the app is in the foreground (hanya jika aktif)
+if (ENABLE_PUSH_NOTIFICATIONS && !isExpoGo && Platform?.OS !== 'web') {
+  try {
+    const notifMod = getNotifications()
+    if (notifMod?.setNotificationHandler) {
+      notifMod.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true
+        })
+      })
+    }
+  } catch (_) {}
 }
 
 /**
  * Configure Android notification channels
  */
 export async function setupAndroidNotificationChannels() {
-  if (Platform?.OS !== 'android') return
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo || Platform?.OS !== 'android') return
+
+  const Notifications = getNotifications()
+  if (!Notifications?.setNotificationChannelAsync) return
 
   try {
-    if (!Notifications.setNotificationChannelAsync) return
-
     await Notifications.setNotificationChannelAsync('ipl-tagihan', {
       name: 'Tagihan & Pembayaran IPL',
       description: 'Pemberitahuan tagihan baru, jatuh tempo, dan konfirmasi pembayaran',
@@ -48,9 +75,7 @@ export async function setupAndroidNotificationChannels() {
       sound: 'default',
       enableVibrate: true,
       showBadge: true
-    }).catch((e) => {
-      console.warn('[PushNotification] Skip channel ipl-tagihan (di Expo Go/runtime terbatas):', e?.message || e)
-    })
+    }).catch(() => {})
 
     await Notifications.setNotificationChannelAsync('ipl-pengumuman', {
       name: 'Pengumuman & Surat Warga',
@@ -61,9 +86,7 @@ export async function setupAndroidNotificationChannels() {
       sound: 'default',
       enableVibrate: true,
       showBadge: true
-    }).catch((e) => {
-      console.warn('[PushNotification] Skip channel ipl-pengumuman:', e?.message || e)
-    })
+    }).catch(() => {})
 
     await Notifications.setNotificationChannelAsync('ipl-default', {
       name: 'Notifikasi Umum',
@@ -71,12 +94,8 @@ export async function setupAndroidNotificationChannels() {
       importance: Notifications.AndroidImportance.DEFAULT,
       sound: 'default',
       showBadge: true
-    }).catch((e) => {
-      console.warn('[PushNotification] Skip channel ipl-default:', e?.message || e)
-    })
-  } catch (err) {
-    console.warn('[PushNotification] setupAndroidNotificationChannels dilewati pada runtime ini:', err?.message || err)
-  }
+    }).catch(() => {})
+  } catch (_) {}
 }
 
 /**
@@ -108,33 +127,33 @@ export async function setLaravelApiUrl(url) {
  * Register device and obtain Expo Push Token
  */
 export async function registerForPushNotificationsAsync() {
-  if (Platform?.OS === 'web') {
-    return { success: false, reason: 'Push notification tidak didukung di web browser' }
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo || Platform?.OS === 'web') {
+    return {
+      success: false,
+      reason: isExpoGo
+        ? 'Push notification dinonaktifkan di Expo Go.'
+        : 'Push notification dinonaktifkan.',
+      permissionStatus: 'denied'
+    }
+  }
+
+  const Notifications = getNotifications()
+  if (!Notifications) {
+    return { success: false, reason: 'Modul notifikasi tidak tersedia', permissionStatus: 'denied' }
   }
 
   // Setup Android channels first
   await setupAndroidNotificationChannels()
 
-  if (!Device.isDevice) {
-    // Physical device recommended for real APNs / FCM push, but allow token retrieval if available
-    console.warn('[PushNotification] Perangkat simulator/emulator terdeteksi. Push notifikasi remote membutuhkan perangkat fisik.')
+  let isDevice = true
+  try {
+    const Device = require('expo-device')
+    isDevice = Boolean(Device?.isDevice)
+  } catch (_) {}
+
+  if (!isDevice) {
+    console.warn('[PushNotification] Perangkat simulator/emulator terdeteksi.')
   }
-
-    // Expo Go pada Android (sejak SDK 53) tidak mendukung token push FCM remote
-    const isExpoGo =
-      Constants?.executionEnvironment === 'storeClient' ||
-      Constants?.appOwnership === 'expo'
-
-    if (isExpoGo && Platform?.OS === 'android') {
-      console.warn(
-        '[PushNotification] Berjalan di Expo Go Android. Push notifikasi remote membutuhkan APK Standalone / Development Build. Notifikasi lokal tetap aktif.'
-      )
-      return {
-        success: false,
-        isExpoGo: true,
-        reason: 'Expo Go pada Android tidak mendukung push token remote. Gunakan APK Standalone untuk push notification FCM.'
-      }
-    }
 
   try {
     // 1. Check existing permission
@@ -198,11 +217,17 @@ export async function registerForPushNotificationsAsync() {
  * Sync device push token with Laravel API and Supabase
  */
 export async function syncPushTokenWithBackend(token, currentUser) {
-  if (!token || !currentUser) return { success: false, reason: 'Token atau user tidak tersedia' }
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo || !token || !currentUser) {
+    return { success: false, reason: 'Push notification tidak aktif' }
+  }
 
   const apiUrl = await getLaravelApiUrl()
   const osName = Platform?.OS ? Platform.OS.toUpperCase() : 'DEVICE'
-  const deviceName = Device.deviceName || `${osName} Device`
+  let deviceName = `${osName} Device`
+  try {
+    const Device = require('expo-device')
+    if (Device?.deviceName) deviceName = Device.deviceName
+  } catch (_) {}
   const deviceType = Platform?.OS || 'android'
 
   const payload = {
@@ -276,6 +301,8 @@ export async function syncPushTokenWithBackend(token, currentUser) {
  * Deregister push token from Laravel API on logout
  */
 export async function removePushTokenFromBackend(currentUser) {
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo) return
+
   try {
     const token = await AsyncStorage.getItem(STORAGE_KEY_PUSH_TOKEN)
     if (!token) return
@@ -347,6 +374,10 @@ export async function sendLocalNotification({
   data = {},
   channelId = 'ipl-tagihan'
 }) {
+  if (!ENABLE_PUSH_NOTIFICATIONS || isExpoGo) {
+    return null
+  }
+
   if (Platform?.OS === 'web') {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       new Notification(title, { body })
@@ -355,6 +386,9 @@ export async function sendLocalNotification({
     }
     return { status: 'web-simulated' }
   }
+
+  const Notifications = getNotifications()
+  if (!Notifications?.scheduleNotificationAsync) return null
 
   try {
     await setupAndroidNotificationChannels().catch(() => {})
@@ -368,8 +402,7 @@ export async function sendLocalNotification({
       },
       trigger: null
     })
-  } catch (err) {
-    console.warn('[PushNotification] Gagal mengirim notifikasi lokal:', err?.message || err)
+  } catch (_) {
     return null
   }
 }

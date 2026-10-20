@@ -21,6 +21,7 @@ import {
   Grid,
   Layers,
   Settings,
+  Zap,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -275,8 +276,9 @@ export const FloatingBottomBar: React.FC<FloatingBottomBarProps> = ({
               ? pendingVerificationCount
               : 0;
           } else if (i === 4) {
-            // Tab 5: Pengaturan
-            IconComponent = Settings;
+            // Tab 5: Aksi Cepat (Sebelumnya Pengaturan)
+            IconComponent = Zap;
+            label = 'Aksi Cepat';
           }
 
           return (

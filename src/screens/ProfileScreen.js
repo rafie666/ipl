@@ -5,8 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert
+  Alert,
+  Platform
 } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import {
   User,
   Settings,
@@ -20,7 +22,8 @@ import {
   CheckCircle2,
   Users,
   Edit3,
-  Repeat
+  Repeat,
+  Zap
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import TopAppBar from '../components/TopAppBar'
@@ -37,6 +40,7 @@ export default function ProfileScreen({ navigation }) {
     isWarga,
     isRT,
     isRW,
+    isAdmin,
     isAdminLoggedIn,
     hasDualRole,
     activeMode,
@@ -47,7 +51,12 @@ export default function ProfileScreen({ navigation }) {
     userJabatan
   } = useApp()
 
+  const isAdminUser = Boolean(isAdmin || currentUser?.role === 'admin' || currentUser?.jabatan === 'admin')
+
   const handleLogout = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+    } catch {}
     Alert.alert('Konfirmasi Keluar', 'Apakah Anda yakin ingin keluar dari akun ini?', [
       { text: 'Batal', style: 'cancel' },
       {
@@ -179,48 +188,56 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
-          {isAdminLoggedIn && (
-            <TouchableOpacity
-              style={styles.menuRow}
-              onPress={() => navigation.navigate('Pengaturan')}
-              activeOpacity={0.8}
-              accessible={true}
-              accessibilityRole="button"
-              accessibilityLabel="Pengaturan Sistem & Pos Iuran"
-            >
-              <View style={styles.menuIconWrap}>
-                <Settings size={16} color={colors.primary} />
-              </View>
-              <Text style={styles.menuLabel}>Pengaturan Sistem & Pos Iuran</Text>
-              <ChevronRight size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
-            style={[styles.menuRow, { borderBottomWidth: 0 }]}
-            onPress={() => navigation.navigate('DataAkses')}
+            style={[styles.menuRow, !isAdminUser && { borderBottomWidth: 0 }]}
+            onPress={() => navigation.navigate('Pengaturan')}
             activeOpacity={0.8}
             accessible={true}
             accessibilityRole="button"
-            accessibilityLabel="Akun Login Demo & Keamanan"
+            accessibilityLabel="Aksi Cepat & Pengaturan"
           >
             <View style={styles.menuIconWrap}>
-              <Shield size={16} color={colors.primary} />
+              <Zap size={16} color={colors.primary} />
             </View>
-            <Text style={styles.menuLabel}>Akun Login Demo & Keamanan</Text>
+            <Text style={styles.menuLabel}>Aksi Cepat & Pengaturan</Text>
             <ChevronRight size={16} color={colors.textSecondary} />
           </TouchableOpacity>
+
+          {isAdminUser && (
+            <TouchableOpacity
+              style={[styles.menuRow, { borderBottomWidth: 0 }]}
+              onPress={() => navigation.navigate('DataAkses')}
+              activeOpacity={0.8}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="Akun Login Demo & Keamanan"
+            >
+              <View style={styles.menuIconWrap}>
+                <Shield size={16} color={colors.primary} />
+              </View>
+              <Text style={styles.menuLabel}>Akun Login Demo & Keamanan</Text>
+              <ChevronRight size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
         </AppCard>
 
         {/* Tombol Logout */}
-        <View style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
-          <AppButton
-            title="Keluar dari Akun"
-            variant="danger"
-            icon={<LogOut size={16} color={colors.surface} />}
-            onPress={handleLogout}
-          />
-        </View>
+        <TouchableOpacity
+          style={styles.logoutCard}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Keluar dari Akun"
+        >
+          <View style={styles.logoutIconBox}>
+            <LogOut size={20} color="#DC2626" strokeWidth={2.2} />
+          </View>
+          <View style={styles.logoutTextCol}>
+            <Text style={styles.logoutTitle}>Keluar dari Akun</Text>
+            <Text style={styles.logoutSubtitle}>Akhiri sesi login di perangkat ini</Text>
+          </View>
+          <ChevronRight size={18} color="#DC2626" />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   )
@@ -391,5 +408,51 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: '600',
     flex: 1
+  },
+  logoutCard: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: '#FEE2E2',
+    borderRadius: radius.xl,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    ...Platform.select({
+      web: { boxShadow: '0 2px 10px rgba(220, 38, 38, 0.08)' },
+      default: {
+        shadowColor: '#DC2626',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 2
+      }
+    })
+  },
+  logoutIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.md,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12
+  },
+  logoutTextCol: {
+    flex: 1
+  },
+  logoutTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: -0.2
+  },
+  logoutSubtitle: {
+    fontSize: 11.5,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontWeight: '500'
   }
 })

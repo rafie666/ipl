@@ -151,11 +151,15 @@ const styles = StyleSheet.create({
   },
   dialog: {
     width: '100%',
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.floating,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
+    elevation: 20,
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column'
@@ -164,35 +168,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF'
   },
   headerTitleWrap: {
     flex: 1,
-    marginRight: spacing.sm
+    marginRight: 12
   },
   title: {
     fontFamily: typography.h3.fontFamily,
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: 22,
-    fontWeight: '700',
-    color: colors.textPrimary
+    fontWeight: '800',
+    color: '#0F172A'
   },
   subtitle: {
     fontFamily: typography.caption.fontFamily,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textSecondary,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: '#64748B',
     marginTop: 2
   },
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: radius.md,
-    backgroundColor: colors.background,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -201,22 +205,24 @@ const styles = StyleSheet.create({
     width: '100%'
   },
   content: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xl
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    paddingBottom: 22
   },
   contentNonScroll: {
-    padding: spacing.lg,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     flexShrink: 1
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.background,
-    gap: spacing.sm
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+    gap: 10
   },
   actionBtnCol: {
     flex: 1,

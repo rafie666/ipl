@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -37,12 +37,25 @@ export default function DataAksesScreen({ navigation }) {
     users,
     rts,
     currentUser,
+    isAdmin,
     addUserAccount,
     updateUserAccount,
     deleteUserAccount,
     refreshData,
     refreshing
   } = useApp()
+
+  useEffect(() => {
+    const isUserAdmin = Boolean(isAdmin || currentUser?.role === 'admin' || currentUser?.jabatan === 'admin')
+    if (!isUserAdmin) {
+      Alert.alert('Akses Terbatas', 'Fitur Akun Login Demo & Keamanan hanya dapat diakses oleh Administrator Sistem.')
+      if (navigation.canGoBack()) {
+        navigation.goBack()
+      } else {
+        navigation.navigate('Main', { screen: 'DashboardTab' })
+      }
+    }
+  }, [isAdmin, currentUser])
 
   const [search, setSearch] = useState('')
   const [filterRole, setFilterRole] = useState('ALL')

@@ -69,6 +69,13 @@ export function initializeCustomAlertOverride() {
     ) {
       detectedType = 'success'
     } else if (
+      titleLower.includes('keluar') ||
+      titleLower.includes('logout') ||
+      msgLower.includes('keluar dari akun') ||
+      msgLower.includes('keluar dari sesi')
+    ) {
+      detectedType = 'logout'
+    } else if (
       hasDestructive ||
       titleLower.includes('hapus') ||
       titleLower.includes('batal') ||

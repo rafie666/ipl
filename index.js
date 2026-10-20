@@ -1,5 +1,15 @@
 import './src/utils/customAlert';
 import { registerRootComponent } from 'expo';
+import { LogBox } from 'react-native';
+
+// Abaikan peringatan expo-notifications pada runtime Expo Go / emulator
+LogBox.ignoreLogs([
+  '[expo-notifications]',
+  '`expo-notifications`',
+  'PushNotification',
+  'ExpoNotificationChannelManager',
+  'NotificationsChannelsProvider',
+]);
 
 // Ignore non-app errors from third-party Chrome extensions (e.g. chrome-extension://...)
 if (typeof window !== 'undefined' && window.addEventListener) {

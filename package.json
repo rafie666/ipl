@@ -35,7 +35,7 @@
     "android": "expo start --android --offline",
     "ios": "expo start --ios --offline",
     "web": "expo start --web --offline",
-    "postinstall": "patch-package"
+    "postinstall": "node scripts/apply-patches.js"
   },
   "private": true,
   "devDependencies": {

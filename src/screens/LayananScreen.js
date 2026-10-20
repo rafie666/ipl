@@ -171,7 +171,7 @@ export default function LayananScreen({ navigation }) {
       color: colors.success,
       route: 'DataAkses',
       category: 'Master Data & Akses',
-      allowedRoles: ['admin', 'rw']
+      allowedRoles: ['admin']
     },
     {
       id: 'pengaturan',

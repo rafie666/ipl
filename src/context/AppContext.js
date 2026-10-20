@@ -58,6 +58,7 @@ export function AppProvider({ children }) {
   const [refreshing, setRefreshing] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [activeMode, setActiveMode] = useState('jabatan') // 'jabatan' | 'warga'
+  const [activeRoleOverride, setActiveRoleOverride] = useState(null)
   const [users, setUsers] = useState([])
   const [rts, setRts] = useState([])
   const [rws, setRws] = useState([])
@@ -186,6 +187,7 @@ export function AppProvider({ children }) {
         const autoCfg = initialConfig?.autoBilling || {
           enabled: true,
           publishDay: 5,
+          publishTime: '08:00',
           dueDay: 20,
           scope: 'ALL'
         }
@@ -508,37 +510,50 @@ export function AppProvider({ children }) {
       await removePushTokenFromBackend(currentUser)
     }
     setCurrentUser(null)
+    setActiveRoleOverride(null)
+    setActiveMode('jabatan')
     await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
   }
 
+  // Current entity lookups: Warga maupun RT mendapatkan RT dan RW wilayahnya
+  const currentWarga = currentUser?.resident_id
+    ? (warga.find((w) => w.id === currentUser.resident_id) || null)
+    : (warga.find((w) => (w.nama || '').toLowerCase() === (currentUser?.name || '').toLowerCase()) || null)
+
   // Role & Jabatan info helpers
   const rawRole = currentUser?.role || 'warga'
-  const isActuallyWarga = rawRole === 'warga'
-  const userJabatan = isActuallyWarga
-    ? 'warga'
-    : (currentUser?.jabatan || (rawRole !== 'admin' ? rawRole : 'admin'))
+  const rawJabatan = currentUser?.jabatan || ''
+  const residentJabatan = currentWarga?.jabatan || ''
 
-  // isLeadershipUser: Akun resmi pimpinan wilayah (Ketua RT / Ketua RW) atau Admin IT adalah akun struktural kepengurusan murni
-  const isRTUser = !isActuallyWarga && (rawRole === 'rt' || userJabatan === 'rt')
-  const isRWUser = !isActuallyWarga && (rawRole === 'rw' || userJabatan === 'rw')
-  const isLeadershipUser = isRTUser || isRWUser || rawRole === 'admin'
-  const isOfficial = !isActuallyWarga && (['rt', 'rw', 'bendahara', 'pengurus'].includes(userJabatan) || ['rt', 'rw', 'bendahara', 'pengurus'].includes(rawRole))
+  const VALID_JABATAN = ['bendahara', 'pengurus', 'rt', 'rw', 'admin']
 
-  // hasDualRole HANYA aktif untuk peran fungsional warga (Bendahara & Pengurus) yang merangkap iuran/fasum
-  // Akun Ketua RT & Ketua RW adalah akun tata kelola wilayah murni (tidak ada ubah role ke warga)
-  const hasDualRole = Boolean(currentUser && isOfficial && !isLeadershipUser)
+  // Cek apakah user memiliki jabatan struktural resmi
+  const detectedJabatan = (
+    (VALID_JABATAN.includes(rawJabatan) && rawJabatan) ||
+    (VALID_JABATAN.includes(rawRole) && rawRole) ||
+    (VALID_JABATAN.includes(residentJabatan) && residentJabatan) ||
+    null
+  )
+
+  const hasJabatan = Boolean(currentUser && detectedJabatan)
+  const officialJabatan = detectedJabatan || 'warga'
+  const userJabatan = officialJabatan
+
+  // isLeadershipUser: Akun resmi pimpinan wilayah (Ketua RT / Ketua RW) atau Admin IT
+  const isRTUser = officialJabatan === 'rt'
+  const isRWUser = officialJabatan === 'rw'
+  const isLeadershipUser = isRTUser || isRWUser || officialJabatan === 'admin'
+  const isOfficial = hasJabatan && ['rt', 'rw', 'bendahara', 'pengurus'].includes(officialJabatan)
+
+  // hasDualRole aktif HANYA jika user memiliki jabatan/peran kepengurusan
+  const hasDualRole = hasJabatan
 
   // Mode View Switcher:
-  // Jika rawRole === 'warga', effectiveRole PASTI 'warga'!
-  // Jika pimpinan struktural (RT/RW/Admin), effectiveRole terkunci sesuai jabatannya
-  // Jika pengguna fungsional dual role (Bendahara/Pengurus), ikuti activeMode
-  const effectiveRole = isActuallyWarga
-    ? 'warga'
-    : (isLeadershipUser
-        ? (isRWUser ? 'rw' : (isRTUser ? 'rt' : rawRole))
-        : (hasDualRole
-            ? (activeMode === 'warga' ? 'warga' : userJabatan)
-            : rawRole))
+  // Jika punya jabatan, user bisa beralih antara tampilan Jabatan (officialJabatan) dan tampilan Warga ('warga')
+  // Jika tidak punya jabatan (warga biasa), tampilan selalu 'warga'
+  const effectiveRole = hasJabatan
+    ? (activeRoleOverride || (activeMode === 'warga' ? 'warga' : officialJabatan))
+    : 'warga'
 
   const isWarga = effectiveRole === 'warga'
   const isRT = effectiveRole === 'rt'
@@ -550,8 +565,28 @@ export function AppProvider({ children }) {
   const isAdminLoggedIn = !isWarga && (isAdmin || isRW || isRT || isBendahara || isPengurus)
 
   const toggleActiveMode = () => {
-    if (isLeadershipUser) return
+    if (!hasJabatan) return
+    setActiveRoleOverride(null)
     setActiveMode((prev) => (prev === 'jabatan' ? 'warga' : 'jabatan'))
+  }
+
+  const switchActiveRole = (targetRole) => {
+    if (!hasJabatan) return
+    if (targetRole === 'warga') {
+      setActiveMode('warga')
+      setActiveRoleOverride('warga')
+    } else {
+      setActiveMode('jabatan')
+      setActiveRoleOverride(officialJabatan)
+    }
+  }
+
+  const switchDemoAccount = async (targetUser) => {
+    if (!targetUser) return
+    setCurrentUser(targetUser)
+    setActiveMode('jabatan')
+    setActiveRoleOverride(null)
+    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(targetUser))
   }
 
   const jabatanLabel = getJabatanLabel(userJabatan)
@@ -560,9 +595,6 @@ export function AppProvider({ children }) {
 
   // Current entity lookups: Warga maupun RT mendapatkan RT dan RW wilayahnya
   const effectiveUser = currentUser ? { ...currentUser, role: effectiveRole } : null
-  const currentWarga = currentUser?.resident_id
-    ? warga.find((w) => w.id === currentUser.resident_id) || null
-    : warga.find((w) => (w.nama || '').toLowerCase() === (currentUser?.name || '').toLowerCase()) || (isWarga ? warga[0] : null)
 
   const userRtId = currentUser?.rt_id || currentWarga?.rt_id || 'rt-01-01'
   const currentRT = rts.find((r) => r.id === userRtId) || rts[0] || null
@@ -2239,6 +2271,7 @@ export function AppProvider({ children }) {
     const defaultAuto = {
       enabled: true,
       publishDay: 5,
+      publishTime: '08:00',
       dueDay: 20,
       scope: 'ALL',
       last_run_at: null,
@@ -2689,13 +2722,62 @@ export function AppProvider({ children }) {
     return { success: true }
   }
 
+  // Helper for Bank & QRIS CRUD permissions
+  const canUserManageBankOrQris = (item = null) => {
+    if (isWarga) return false
+    // Bendahara dan Admin bisa kelola SEMUA
+    if (isAdmin || isBendahara || officialJabatan === 'admin' || officialJabatan === 'bendahara') return true
+    
+    // Ketua RW: hanya rekening di wilayah RW-nya atau RT di bawah RW-nya
+    if (isRW || officialJabatan === 'rw') {
+      if (!item) return true
+      if (item.owner_type === 'RW') {
+        return !item.owner_id || item.owner_id === 'RW' || item.owner_id === userRwId
+      }
+      if (item.owner_type === 'RT') {
+        const rtObj = rts.find((r) => r.id === item.owner_id)
+        if (rtObj) return rtObj.rw_id === userRwId
+        const rwNum = (userRwId || 'rw-01').replace('rw-', '')
+        return item.owner_id?.startsWith(`rt-${rwNum}-`) || item.owner_id?.includes(userRwId)
+      }
+      return false
+    }
+
+    // Ketua RT: hanya rekening di wilayah RT-nya sendiri
+    if (isRT || officialJabatan === 'rt') {
+      if (!item) return true
+      return item.owner_type === 'RT' && item.owner_id === userRtId
+    }
+
+    return false
+  }
+
   // Bank Accounts CRUD
   const addBankAccount = async (data) => {
+    if (isWarga) {
+      return { success: false, message: 'Warga tidak memiliki akses menambah rekening.' }
+    }
+    if (!canUserManageBankOrQris(null)) {
+      return { success: false, message: 'Anda tidak memiliki hak akses menambah rekening.' }
+    }
+
+    let finalOwnerType = data.owner_type || 'RT'
+    let finalOwnerId = data.owner_id || userRtId
+
+    if (isRT || officialJabatan === 'rt') {
+      finalOwnerType = 'RT'
+      finalOwnerId = userRtId
+    } else if (isRW || officialJabatan === 'rw') {
+      if (finalOwnerType === 'RW') {
+        finalOwnerId = userRwId
+      }
+    }
+
     const newId = `ba-${Date.now()}`
     const newItem = {
       id: newId,
-      owner_type: data.owner_type || 'RT',
-      owner_id: data.owner_id || 'rt-1',
+      owner_type: finalOwnerType,
+      owner_id: finalOwnerId,
       bank_name: data.bank_name || 'BCA',
       account_number: data.account_number || '',
       account_holder: data.account_holder || '',
@@ -2713,6 +2795,12 @@ export function AppProvider({ children }) {
   }
 
   const updateBankAccount = async (id, data) => {
+    const existing = bankAccounts.find((b) => b.id === id)
+    if (!existing) return { success: false, message: 'Rekening tidak ditemukan.' }
+    if (!canUserManageBankOrQris(existing)) {
+      return { success: false, message: 'Anda tidak memiliki wewenang untuk mengubah rekening ini.' }
+    }
+
     let updated = bankAccounts.map((b) => (b.id === id ? { ...b, ...data } : b))
     if (data.is_primary) {
       const target = updated.find((b) => b.id === id)
@@ -2726,6 +2814,12 @@ export function AppProvider({ children }) {
   }
 
   const deleteBankAccount = async (id) => {
+    const existing = bankAccounts.find((b) => b.id === id)
+    if (!existing) return { success: false, message: 'Rekening tidak ditemukan.' }
+    if (!canUserManageBankOrQris(existing)) {
+      return { success: false, message: 'Anda tidak memiliki wewenang untuk menghapus rekening ini.' }
+    }
+
     const updated = bankAccounts.filter((b) => b.id !== id)
     setBankAccounts(updated)
     await saveStorageItem(STORAGE_KEYS.BANK_ACCOUNTS, updated)
@@ -2735,11 +2829,30 @@ export function AppProvider({ children }) {
 
   // QRIS Accounts CRUD
   const addQrisAccount = async (data) => {
+    if (isWarga) {
+      return { success: false, message: 'Warga tidak memiliki akses menambah QRIS.' }
+    }
+    if (!canUserManageBankOrQris(null)) {
+      return { success: false, message: 'Anda tidak memiliki hak akses menambah QRIS.' }
+    }
+
+    let finalOwnerType = data.owner_type || 'RT'
+    let finalOwnerId = data.owner_id || userRtId
+
+    if (isRT || officialJabatan === 'rt') {
+      finalOwnerType = 'RT'
+      finalOwnerId = userRtId
+    } else if (isRW || officialJabatan === 'rw') {
+      if (finalOwnerType === 'RW') {
+        finalOwnerId = userRwId
+      }
+    }
+
     const newId = `qris-${Date.now()}`
     const newItem = {
       id: newId,
-      owner_type: data.owner_type || 'RT',
-      owner_id: data.owner_id || 'rt-1',
+      owner_type: finalOwnerType,
+      owner_id: finalOwnerId,
       qris_name: data.qris_name || 'QRIS Utama',
       nmid: data.nmid || '',
       image_url: data.image_url || '',
@@ -2757,6 +2870,12 @@ export function AppProvider({ children }) {
   }
 
   const updateQrisAccount = async (id, data) => {
+    const existing = qrisAccounts.find((q) => q.id === id)
+    if (!existing) return { success: false, message: 'QRIS tidak ditemukan.' }
+    if (!canUserManageBankOrQris(existing)) {
+      return { success: false, message: 'Anda tidak memiliki wewenang untuk mengubah QRIS ini.' }
+    }
+
     let updated = qrisAccounts.map((q) => (q.id === id ? { ...q, ...data } : q))
     if (data.is_primary) {
       const target = updated.find((q) => q.id === id)
@@ -2770,6 +2889,12 @@ export function AppProvider({ children }) {
   }
 
   const deleteQrisAccount = async (id) => {
+    const existing = qrisAccounts.find((q) => q.id === id)
+    if (!existing) return { success: false, message: 'QRIS tidak ditemukan.' }
+    if (!canUserManageBankOrQris(existing)) {
+      return { success: false, message: 'Anda tidak memiliki wewenang untuk menghapus QRIS ini.' }
+    }
+
     const updated = qrisAccounts.filter((q) => q.id !== id)
     setQrisAccounts(updated)
     await saveStorageItem(STORAGE_KEYS.QRIS_ACCOUNTS, updated)
@@ -2913,7 +3038,12 @@ export function AppProvider({ children }) {
         activeMode,
         setActiveMode,
         toggleActiveMode,
+        switchActiveRole,
+        switchDemoAccount,
+        activeRoleOverride,
         hasDualRole,
+        hasJabatan,
+        officialJabatan,
         effectiveRole,
         currentRole: effectiveRole,
         userJabatan,
@@ -2930,6 +3060,8 @@ export function AppProvider({ children }) {
         isAdminLoggedIn,
         currentRT,
         currentRW,
+        userRtId,
+        userRwId,
         scopedRts,
         currentWarga,
         config,

@@ -164,6 +164,23 @@ export function shouldExecuteAutoBilling({
     }
   }
 
+  // Jika hari ini tepat tanggal terbit dan waktu/jam terbit (publishTime) dikonfigurasi
+  if (now.day === effectiveDay && config.publishTime) {
+    const timeParts = String(config.publishTime).split(':').map((v) => parseInt(v, 10))
+    const targetHour = isNaN(timeParts[0]) ? 0 : timeParts[0]
+    const targetMinute = isNaN(timeParts[1]) ? 0 : timeParts[1]
+    const currentMinutes = (now.hour || 0) * 60 + (now.minute || 0)
+    const targetMinutes = targetHour * 60 + targetMinute
+
+    if (currentMinutes < targetMinutes) {
+      return {
+        shouldRun: false,
+        reason: `Menunggu waktu posting otomatis pukul ${config.publishTime} WIB (Sekarang: ${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')} WIB)`,
+        nextRun: `${effectiveDay} ${getNamaBulan(now.month)} ${now.year} pukul ${config.publishTime} WIB`
+      }
+    }
+  }
+
   // Cek apakah ada warga aktif yang belum memiliki tagihan untuk periode bulan ini
   const scopesToCheck = config.scope === 'ALL' ? ['RT', 'RW'] : [config.scope || 'RT']
   const activeResidents = (residents || []).filter((w) => w.aktif !== false)
@@ -197,7 +214,7 @@ export function shouldExecuteAutoBilling({
     targetMonth: now.month,
     effectivePublishDay: effectiveDay,
     effectiveDueDay: getEffectiveDueDay(now.year, now.month, config.dueDay),
-    reason: `Jadwal tanggal ${effectiveDay} terpenuhi untuk periode ${getNamaBulan(now.month)} ${now.year}`
+    reason: `Jadwal tanggal ${effectiveDay} pukul ${config.publishTime || '08:00'} terpenuhi untuk periode ${getNamaBulan(now.month)} ${now.year}`
   }
 }
 
@@ -263,9 +280,9 @@ export function buildAutoBillingInvoices({
         return
       }
 
-      // Ambil pos iuran yang aktif untuk scope ini
+      // Ambil pos iuran yang aktif dan di-set untuk auto-post (default true)
       let activePos = (iuranRates || []).filter(
-        (j) => j.aktif !== false && (j.payment_scope === sc || (!j.payment_scope && sc === 'RT'))
+        (j) => j.aktif !== false && j.autoPost !== false && (j.payment_scope === sc || (!j.payment_scope && sc === 'RT'))
       )
 
       // Fallback tarif jika master pos iuran belum dikonfigurasi
