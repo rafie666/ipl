@@ -457,26 +457,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  // Recurring auto-billing heartbeat (foreground resume & interval check)
-  useEffect(() => {
-    const handleAppStateChange = (nextState) => {
-      if (nextState === 'active') {
-        triggerManualBillingCatchUp().catch(() => {})
-      }
-    }
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange)
-
-    // Interval berkala setiap 30 menit jika aplikasi terus aktif di layar
-    const intervalTimer = setInterval(() => {
-      triggerManualBillingCatchUp().catch(() => {})
-    }, 30 * 60 * 1000)
-
-    return () => {
-      subscription?.remove?.()
-      clearInterval(intervalTimer)
-    }
-  }, [])
+  // Auto-billing periodic evaluation registered after triggerManualBillingCatchUp
 
   // Auth Functions
   const login = async (usernameOrObj, maybePassword) => {
@@ -2298,11 +2279,11 @@ export function AppProvider({ children }) {
     setConfig(updatedConfig)
     await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
 
-    // Sync to Supabase wargaku_config
+    // Sync to Supabase wargaku_config with canonical id 'main'
     if (isSupabaseConfigured) {
       try {
         await supabase.from('wargaku_config').upsert({
-          id: 'config-main',
+          id: 'main',
           data: updatedConfig,
           updated_at: new Date().toISOString()
         })
@@ -2329,6 +2310,7 @@ export function AppProvider({ children }) {
     const autoCfg = config?.autoBilling || {
       enabled: true,
       publishDay: 5,
+      publishTime: '08:00',
       dueDay: 20,
       scope: 'ALL'
     }
@@ -2401,6 +2383,16 @@ export function AppProvider({ children }) {
       setConfig(updatedConfig)
       await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
 
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('wargaku_config').upsert({
+            id: 'main',
+            data: updatedConfig,
+            updated_at: new Date().toISOString()
+          })
+        } catch (_) {}
+      }
+
       await addAuditLog({
         action: 'TRIGGER_AUTO_BILLING_MANUAL',
         entity: 'tagihan',
@@ -2432,6 +2424,16 @@ export function AppProvider({ children }) {
       setConfig(updatedConfig)
       await saveStorageItem(STORAGE_KEYS.CONFIG, updatedConfig)
 
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('wargaku_config').upsert({
+            id: 'main',
+            data: updatedConfig,
+            updated_at: new Date().toISOString()
+          })
+        } catch (_) {}
+      }
+
       await addAuditLog({
         action: 'TRIGGER_AUTO_BILLING_FAILED',
         entity: 'tagihan',
@@ -2446,6 +2448,56 @@ export function AppProvider({ children }) {
       }
     }
   }
+
+  // Evaluasi jadwal otomatis tanpa memaksa bypass aturan tanggal/jam
+  const evaluateAndRunAutoBilling = async () => {
+    try {
+      const autoCfg = config?.autoBilling || {
+        enabled: true,
+        publishDay: 5,
+        publishTime: '08:00',
+        dueDay: 20,
+        scope: 'ALL'
+      }
+
+      if (!autoCfg.enabled) return
+
+      const evalRes = shouldExecuteAutoBilling({
+        autoBillingConfig: autoCfg,
+        existingInvoices: tagihan,
+        residents: warga,
+        currentTime: new Date()
+      })
+
+      if (evalRes.shouldRun) {
+        console.log('[AutoBilling Scheduled Run]:', evalRes.reason)
+        await triggerManualBillingCatchUp(evalRes.targetMonth, evalRes.targetYear)
+      }
+    } catch (e) {
+      console.warn('Auto-billing evaluation error:', e)
+    }
+  }
+
+  // Recurring auto-billing heartbeat (foreground resume & interval check)
+  useEffect(() => {
+    const handleAppStateChange = (nextState) => {
+      if (nextState === 'active') {
+        evaluateAndRunAutoBilling().catch(() => {})
+      }
+    }
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange)
+
+    // Interval berkala setiap 15 menit jika aplikasi terus aktif di layar
+    const intervalTimer = setInterval(() => {
+      evaluateAndRunAutoBilling().catch(() => {})
+    }, 15 * 60 * 1000)
+
+    return () => {
+      subscription?.remove?.()
+      clearInterval(intervalTimer)
+    }
+  }, [config?.autoBilling, tagihan, warga])
 
   const updateRtData = async (rtId, data) => {
     const updated = rts.map((r) => (r.id === rtId ? { ...r, ...data } : r))

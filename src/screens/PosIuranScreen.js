@@ -33,6 +33,7 @@ import { useApp } from '../context/AppContext'
 import AppButton from '../components/AppButton'
 import AppModal from '../components/AppModal'
 import { colors, spacing, radius, shadows, typography } from '../utils/theme'
+import { getJakartaDate, getNamaBulan } from '../utils/billingScheduler'
 
 export default function PosIuranScreen({ navigation }) {
   const {
@@ -164,38 +165,67 @@ export default function PosIuranScreen({ navigation }) {
     }
   }
 
-  // Eksekusi Langsung Auto-Post Sekarang
+  // Eksekusi Langsung Auto-Post Sekarang (Dukungan Pemilihan Periode Bulan)
   const handleTriggerAutoPostNow = () => {
+    const nowJkt = getJakartaDate()
+    const curMonthName = getNamaBulan(nowJkt.month)
+    let nextMonth = nowJkt.month + 1
+    let nextYear = nowJkt.year
+    if (nextMonth > 12) {
+      nextMonth = 1
+      nextYear += 1
+    }
+    const nextMonthName = getNamaBulan(nextMonth)
+
     Alert.alert(
-      'Konfirmasi Auto-Post Iuran Sekarang',
-      `Sistem akan langsung menerbitkan tagihan IPL bulan ini ke seluruh warga aktif berdasarkan ${autoPostCount} pos iuran yang aktif.\n\nLanjutkan proses sekarang?`,
+      'Konfirmasi Auto-Post Iuran ⚡',
+      `Pilih periode tagihan yang ingin diterbitkan langsung ke seluruh warga aktif:\n\n` +
+      `• Pos Iuran Aktif: ${autoPostCount} Pos\n` +
+      `• Cakupan: ${billingScope === 'ALL' ? 'Semua (RT & RW)' : billingScope}\n` +
+      `• Aturan: Sistem menjamin 100% idempoten & anti tagihan duplikat.`,
       [
         { text: 'Batal', style: 'cancel' },
         {
-          text: '⚡ Terbitkan Sekarang',
-          onPress: async () => {
-            setTriggeringPost(true)
-            try {
-              const res = await triggerManualBillingCatchUp()
-              if (res.success) {
-                Alert.alert(
-                  'Auto-Post Berhasil Diterbitkan! 🎉',
-                  `${res.message || 'Proses pembuatan tagihan selesai.'}\n\n` +
-                  `• Tagihan Baru Terbit: ${res.createdCount || 0} invoice\n` +
-                  `• Notifikasi Warga: Terkirim`
-                )
-              } else {
-                Alert.alert('Info Auto-Post', res.message || 'Tagihan periode ini sudah pernah diterbitkan.')
-              }
-            } catch (err) {
-              Alert.alert('Error', 'Terjadi kesalahan saat memproses auto-post.')
-            } finally {
-              setTriggeringPost(false)
-            }
-          }
+          text: `Bulan Ini (${curMonthName})`,
+          onPress: () => doExecutePost(nowJkt.month, nowJkt.year, `${curMonthName} ${nowJkt.year}`)
+        },
+        {
+          text: `Bulan Depan (${nextMonthName})`,
+          onPress: () => doExecutePost(nextMonth, nextYear, `${nextMonthName} ${nextYear}`)
         }
       ]
     )
+  }
+
+  const doExecutePost = async (targetMonth, targetYear, label) => {
+    setTriggeringPost(true)
+    try {
+      const res = await triggerManualBillingCatchUp(targetMonth, targetYear)
+      if (res.success) {
+        if (res.createdCount > 0) {
+          Alert.alert(
+            'Auto-Post Berhasil Diterbitkan! 🎉',
+            `${res.message || 'Proses pembuatan tagihan selesai.'}\n\n` +
+            `• Periode: ${res.period || label}\n` +
+            `• Tagihan Baru: ${res.createdCount} invoice\n` +
+            `• Database Cloud: Tersinkronkan\n` +
+            `• Notifikasi Warga: Terkirim`
+          )
+        } else {
+          Alert.alert(
+            'Informasi Penerbitan Tagihan ℹ️',
+            `Seluruh tagihan periode ${res.period || label} sudah lengkap diterbitkan sebelumnya.\n\n` +
+            `Tidak ada tagihan baru yang perlu dibuat (Sistem menjaga 100% idempoten tanpa duplikasi).`
+          )
+        }
+      } else {
+        Alert.alert('Gagal', res.message || 'Terjadi kesalahan sistem saat memproses auto-post.')
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Terjadi kesalahan saat memproses auto-post: ' + (err?.message || 'Error'))
+    } finally {
+      setTriggeringPost(false)
+    }
   }
 
   // Tambah Pos Iuran
@@ -354,6 +384,22 @@ export default function PosIuranScreen({ navigation }) {
                   {triggeringPost ? 'Memproses...' : 'Auto-Post Sekarang'}
                 </Text>
               </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Status Monitoring Info Banner */}
+          {Boolean(autoBilling.last_run_message) && (
+            <View style={styles.lastRunBox}>
+              <View style={styles.lastRunHeader}>
+                <Info size={13} color="#0369A1" />
+                <Text style={styles.lastRunTitle}>Riwayat & Monitoring Terakhir</Text>
+              </View>
+              <Text style={styles.lastRunDesc}>{autoBilling.last_run_message}</Text>
+              {autoBilling.scheduler_heartbeat_wib ? (
+                <Text style={styles.lastRunHeartbeat}>
+                  Heartbeat Server: {autoBilling.scheduler_heartbeat_wib} • Status: {autoBilling.scheduler_status || 'RUNNING'}
+                </Text>
+              ) : null}
             </View>
           )}
         </View>
@@ -915,6 +961,36 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: typography.bold,
     color: '#FFFFFF'
+  },
+  lastRunBox: {
+    marginTop: 10,
+    backgroundColor: '#F0F9FF',
+    borderRadius: radius.md,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#BAE6FD'
+  },
+  lastRunHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4
+  },
+  lastRunTitle: {
+    fontSize: 12,
+    fontWeight: typography.bold,
+    color: '#0369A1'
+  },
+  lastRunDesc: {
+    fontSize: 12,
+    color: '#0C4A6E',
+    lineHeight: 17
+  },
+  lastRunHeartbeat: {
+    fontSize: 11,
+    color: '#0284C7',
+    marginTop: 4,
+    fontWeight: typography.medium
   },
 
   // Summary Card
