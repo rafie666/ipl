@@ -1140,11 +1140,17 @@ export function AppProvider({ children }) {
   const tambahWarga = async (newWargaData) => {
     const isPublicRegistration = !currentUser || currentUser?.role === 'warga'
     const newId = `w-${Date.now()}`
-    const targetRtId = newWargaData.rt_id || currentUser?.rt_id || 'rt-1'
+    const targetRtId = newWargaData.rt_id !== undefined ? newWargaData.rt_id : (currentUser?.rt_id || 'rt-1')
+    const targetRole = newWargaData.role || 'warga'
+    const targetJabatan = newWargaData.jabatan || targetRole
+    const targetRwId = newWargaData.rw_id !== undefined ? newWargaData.rw_id : (rts.find((r) => r.id === targetRtId)?.rw_id || 'rw-01')
 
     const item = {
       id: newId,
       rt_id: targetRtId,
+      rw_id: targetRwId,
+      role: targetRole,
+      jabatan: targetJabatan,
       kodeUnik: newWargaData.kodeUnik ? getKodeUnikLengkap({ kodeUnik: newWargaData.kodeUnik }) : generateNextKodeUnik(warga, 'WR'),
       nama: newWargaData.nama,
       nik: newWargaData.nik || '',
@@ -1177,9 +1183,11 @@ export function AppProvider({ children }) {
         password_hash: passwordHash,
         name: newWargaData.nama,
         phone: newWargaData.noHp || '',
-        role: 'warga',
+        role: targetRole,
+        jabatan: targetJabatan,
         resident_id: newId,
         rt_id: targetRtId,
+        rw_id: targetRwId,
         status: isPublicRegistration ? 'pending_approval' : 'active',
         created_at: new Date().toISOString()
       }
@@ -3001,7 +3009,9 @@ export function AppProvider({ children }) {
     }
 
     // Tentukan apakah user saat ini berhak menerima notifikasi lokal di perangkat
-    const shouldAlert = isNotificationRelevantForUser(newItem, currentUser, currentWarga)
+    const shouldAlert = typeof isNotificationRelevantForUser === 'function'
+      ? isNotificationRelevantForUser(newItem, currentUser, currentWarga)
+      : true
     if (shouldAlert) {
       const channelId = (newItem.type === 'tagihan' || newItem.type?.startsWith('payment'))
         ? 'ipl-tagihan'
@@ -3034,7 +3044,10 @@ export function AppProvider({ children }) {
 
   const markAllNotificationsRead = async () => {
     const updated = notifications.map((n) => {
-      if (isNotificationRelevantForUser(n, currentUser, currentWarga)) {
+      const isRel = typeof isNotificationRelevantForUser === 'function'
+        ? isNotificationRelevantForUser(n, currentUser, currentWarga)
+        : true
+      if (isRel) {
         return { ...n, read: true }
       }
       return n

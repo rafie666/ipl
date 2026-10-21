@@ -414,6 +414,31 @@ export function isNotificationRelevantForUser(notif, user, resident) {
   if (!user || !notif) return false
   if (user.role === 'admin') return true
 
+  // Filter khusus untuk role Warga: hanya informasi penting yang relevan
+  if (user.role === 'warga') {
+    const officerTypes = ['REGISTRATION_PENDING', 'warga_baru', 'audit', 'kas_audit', 'approval_needed']
+    if (officerTypes.includes(notif.type)) return false
+    if (notif.targetRole && notif.targetRole !== 'warga' && notif.targetRole !== 'all') return false
+
+    // 1. Notifikasi spesifik ke warga ini
+    if (notif.userId && (notif.userId === user.id || notif.userId === `u-${user.resident_id}`)) return true
+    if (notif.residentId && (notif.residentId === user.resident_id || (resident && notif.residentId === resident.id))) return true
+
+    // 2. Siaran untuk seluruh warga / all di wilayah RT/RW
+    if (notif.targetRole === 'warga' || notif.targetRole === 'all') {
+      if (notif.targetRtId && user.rt_id && notif.targetRtId !== user.rt_id) return false
+      if (notif.targetRwId && user.rw_id && notif.targetRwId !== user.rw_id) return false
+      return true
+    }
+
+    // 3. Pengumuman / kegiatan umum
+    if (!notif.userId && !notif.residentId && !notif.targetRole) {
+      if (notif.type === 'event' || notif.type === 'info' || notif.type === 'pengumuman') return true
+    }
+
+    return false
+  }
+
   // 1. Cek kecocokan User ID atau Resident ID spesifik
   if (notif.userId && (notif.userId === user.id || notif.userId === `u-${user.resident_id}`)) return true
   if (notif.residentId && (notif.residentId === user.resident_id || (resident && notif.residentId === resident.id))) return true

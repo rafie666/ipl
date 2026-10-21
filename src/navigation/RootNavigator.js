@@ -27,38 +27,39 @@ import { useApp } from '../context/AppContext'
 import CustomTabBar from './CustomTabBar'
 
 // Auth Screens
-import SplashScreen from '../screens/SplashScreen'
-import LoginScreen from '../screens/LoginScreen'
-import RegisterScreen from '../screens/RegisterScreen'
+import SplashScreen from '../screens/auth/SplashScreen'
+import LoginScreen from '../screens/auth/LoginScreen'
+import RegisterScreen from '../screens/auth/RegisterScreen'
 
 // Tab Screens
-import DashboardScreen from '../screens/DashboardScreen'
-import TagihanScreen from '../screens/TagihanScreen'
-import WargaListScreen from '../screens/WargaListScreen'
-import KasScreen from '../screens/KasScreen'
-import LayananScreen from '../screens/LayananScreen'
-import ProfileScreen from '../screens/ProfileScreen'
-import PengaturanScreen from '../screens/PengaturanScreen'
+import DashboardScreen from '../screens/dashboard/DashboardScreen'
+import TagihanScreen from '../screens/keuangan/TagihanScreen'
+import WargaListScreen from '../screens/warga/WargaListScreen'
+import KasScreen from '../screens/keuangan/KasScreen'
+import LayananScreen from '../screens/layanan/LayananScreen'
+import ProfileScreen from '../screens/warga/ProfileScreen'
+import PengaturanScreen from '../screens/info/PengaturanScreen'
 
 // Detail Screens
-import DetailWargaScreen from '../screens/DetailWargaScreen'
-import DetailTagihanScreen from '../screens/DetailTagihanScreen'
-import PembayaranScreen from '../screens/PembayaranScreen'
-import PengaduanScreen from '../screens/PengaduanScreen'
-import SuratScreen from '../screens/SuratScreen'
-import EventsScreen from '../screens/EventsScreen'
-import KontakDaruratScreen from '../screens/KontakDaruratScreen'
-import PetaWargaScreen from '../screens/PetaWargaScreen'
-import DataAksesScreen from '../screens/DataAksesScreen'
-import JadwalSatpamScreen from '../screens/JadwalSatpamScreen'
+import DetailWargaScreen from '../screens/warga/DetailWargaScreen'
+import DetailTagihanScreen from '../screens/keuangan/DetailTagihanScreen'
+import PembayaranScreen from '../screens/keuangan/PembayaranScreen'
+import PengaduanScreen from '../screens/layanan/PengaduanScreen'
+import SuratScreen from '../screens/layanan/SuratScreen'
+import EventsScreen from '../screens/layanan/EventsScreen'
+import KontakDaruratScreen from '../screens/info/KontakDaruratScreen'
+import PetaWargaScreen from '../screens/warga/PetaWargaScreen'
+import DataAksesScreen from '../screens/info/DataAksesScreen'
+import JadwalSatpamScreen from '../screens/info/JadwalSatpamScreen'
 
 // Aksi Cepat Full Screens
-import RekeningBankScreen from '../screens/RekeningBankScreen'
-import PosIuranScreen from '../screens/PosIuranScreen'
-import IdentitasLingkunganScreen from '../screens/IdentitasLingkunganScreen'
-import NotifikasiPerangkatScreen from '../screens/NotifikasiPerangkatScreen'
-import MootaGatewayScreen from '../screens/MootaGatewayScreen'
-import EditProfileWargaScreen from '../screens/EditProfileWargaScreen'
+import RekeningBankScreen from '../screens/keuangan/RekeningBankScreen'
+import PosIuranScreen from '../screens/keuangan/PosIuranScreen'
+import IdentitasLingkunganScreen from '../screens/info/IdentitasLingkunganScreen'
+import NotifikasiPerangkatScreen from '../screens/info/NotifikasiPerangkatScreen'
+import NotifikasiScreen from '../screens/info/NotifikasiScreen'
+import MootaGatewayScreen from '../screens/keuangan/MootaGatewayScreen'
+import EditProfileWargaScreen from '../screens/warga/EditProfileWargaScreen'
 
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
@@ -252,6 +253,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Pengaturan" component={PengaturanScreen} />
         <Stack.Screen name="AksiCepat" component={PengaturanScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="Notifikasi" component={NotifikasiScreen} />
+        <Stack.Screen name="Pemberitahuan" component={NotifikasiScreen} />
 
         {/* Aksi Cepat Full Screens */}
         <Stack.Screen name="RekeningBank" component={RekeningBankScreen} />
