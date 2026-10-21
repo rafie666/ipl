@@ -81,14 +81,38 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   // Normalisasi data dari prop `data` atau `tagihan`
   const resolvedData: ReceiptData | null = useMemo(() => {
-    if (data) return data;
+    if (data) {
+      const explicitTime =
+        (data as any).verified_at ||
+        (data as any).tglVerifikasi ||
+        (data as any).tanggalBayar ||
+        (data as any).tglBayar ||
+        (data as any).updated_at;
+      return {
+        ...data,
+        paidAt:
+          data.paidAt && String(data.paidAt).length > 10
+            ? data.paidAt
+            : (explicitTime && String(explicitTime).length > 10 ? explicitTime : (data.paidAt || new Date().toISOString())),
+      };
+    }
     if (tagihan) {
       const bulanArr = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
       const bNama = tagihan.bulan ? bulanArr[(tagihan.bulan || 1) - 1] : '';
+      const rawPaidAt =
+        tagihan.verified_at ||
+        tagihan.tglVerifikasi ||
+        (tagihan.tanggalBayar && String(tagihan.tanggalBayar).length > 10 ? tagihan.tanggalBayar : null) ||
+        (tagihan.tglBayar && String(tagihan.tglBayar).length > 10 ? tagihan.tglBayar : null) ||
+        tagihan.updated_at ||
+        tagihan.tanggalBayar ||
+        tagihan.tglBayar ||
+        new Date().toISOString();
+
       return {
         receiptId: tagihan.noKwitansi || `KW/${tagihan.tahun || '2026'}/${String(tagihan.bulan || '10').padStart(2, '0')}/${tagihan.blok || 'A'}-${tagihan.noRumah || '01'}`,
         amount: tagihan.total || 0,
-        paidAt: tagihan.tanggalBayar || tagihan.tglBayar || tagihan.updated_at || new Date(),
+        paidAt: rawPaidAt,
         residentName: tagihan.namaWarga || tagihan.warga?.nama || 'Warga',
         unitCode: `Blok ${tagihan.blok || 'A'} / No. ${tagihan.noRumah || '01'}`,
         paymentMethod: tagihan.metodeBayar || tagihan.metode || 'Transfer Bank',
@@ -153,49 +177,51 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      transparent
+      transparent={false}
+      statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={styles.scrim}>
-        <View style={[styles.sheetContainer, { paddingTop: Math.max(insets.top, 16) }]}>
-          {/* Header Top Bar */}
-          <View style={styles.headerBar}>
-            <Pressable
-              onPress={onClose}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Tutup kuitansi"
-              style={styles.closeBtn}
-            >
-              <ChevronLeft size={22} color={colors.textPrimary} />
-              <Text style={styles.closeBtnText}>Tutup</Text>
-            </Pressable>
+      <View style={[styles.fullScreenContainer, { paddingTop: Math.max(insets.top, 16) }]}>
+        {/* Header Top Bar */}
+        <View style={styles.headerBar}>
+          <Pressable
+            onPress={onClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Tutup kuitansi"
+            style={styles.closeBtn}
+          >
+            <ChevronLeft size={22} color={colors.textPrimary} />
+            <Text style={styles.closeBtnText}>Tutup</Text>
+          </Pressable>
 
-            <View style={styles.headerTitleWrap}>
-              <Text style={styles.headerTitle}>Kwitansi Pembayaran</Text>
-            </View>
-
-            <Pressable
-              onPress={handleShare}
-              disabled={isPending || loading}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Bagikan kuitansi"
-              style={[styles.shareHeaderBtn, (isPending || loading) && { opacity: 0.4 }]}
-            >
-              <Share2 size={18} color={colors.primary} />
-              <Text style={styles.shareHeaderText}>Bagikan</Text>
-            </Pressable>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>Kwitansi Pembayaran</Text>
           </View>
 
-          {/* Scrollable Receipt Body */}
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: Math.max(insets.bottom, 16) + 24 },
-            ]}
-            showsVerticalScrollIndicator={false}
+          <Pressable
+            onPress={handleShare}
+            disabled={isPending || loading}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Bagikan kuitansi"
+            style={[styles.shareHeaderBtn, (isPending || loading) && { opacity: 0.4 }]}
           >
+            <Share2 size={18} color={colors.primary} />
+            <Text style={styles.shareHeaderText}>Bagikan</Text>
+          </Pressable>
+        </View>
+
+        {/* Scrollable Receipt Body */}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 24) + 48 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
             {error ? (
               <View style={[styles.errorCard, { width: paperWidth }]}>
                 <AlertCircle size={36} color="#B91C1C" />
@@ -454,41 +480,27 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             )}
           </ScrollView>
         </View>
-      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  scrim: {
+  fullScreenContainer: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheetContainer: {
     backgroundColor: '#F8FAFC',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    maxHeight: '94%',
-    ...Platform.select({
-      web: { boxShadow: shadows.sheet } as any,
-      default: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: -10 },
-        shadowOpacity: 0.15,
-        shadowRadius: 28,
-        elevation: 20,
-      },
-    }),
+  },
+  scrollView: {
+    flex: 1,
   },
   headerBar: {
-    height: 52,
+    height: 54,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
   },
   closeBtn: {
     flexDirection: 'row',

@@ -35,7 +35,8 @@ import {
   FileText,
   Sparkles,
   Edit3,
-  Trash2
+  Trash2,
+  Zap
 } from 'lucide-react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { uploadImageToSupabaseStorage } from '../../api/supabase'
@@ -118,6 +119,8 @@ export default function DetailTagihanScreen({ route, navigation }) {
   const recipientLabel = tagihan.pembayaran_kepada || (isRwScope ? 'RW 15' : 'RT 01')
 
   const submissionsList = Array.isArray(tagihan.submissions) ? tagihan.submissions : []
+  const [showManualApproval, setShowManualApproval] = useState(false)
+  const isTransferMoota = tagihan.metode?.includes('Transfer') || tagihan.metodeBayar?.includes('Transfer') || !tagihan.metode || tagihan.metode === 'Transfer Bank'
 
   // Active Proof Image URL
   const activeProofUrl = tagihan.buktiTransferUrl || tagihan.buktiFoto || tagihan.buktiBayar || (submissionsList[submissionsList.length - 1]?.bukti_url)
@@ -448,7 +451,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
               {isLunas
                 ? 'LUNAS'
                 : isPending
-                ? 'MENUNGGU VERIFIKASI'
+                ? (isAdminLoggedIn && isTransferMoota ? '⚡ SEDANG DICEK BOT MOOTA' : 'MENUNGGU VERIFIKASI')
                 : isPerluDiperbaiki
                 ? 'DITOLAK / PERLU DIPERBAIKI'
                 : 'BELUM BAYAR'}
@@ -509,7 +512,7 @@ export default function DetailTagihanScreen({ route, navigation }) {
             </View>
             <View style={[styles.subBadge, isLunas ? styles.badgeLunas : isPending ? styles.badgePending : isPerluDiperbaiki ? styles.badgeTolak : styles.badgeBelum]}>
               <Text style={[styles.subBadgeText, isLunas ? styles.textLunas : isPending ? styles.textPending : isPerluDiperbaiki ? styles.textTolak : styles.textBelum]} numberOfLines={1}>
-                {isLunas ? 'DIBAYAR' : isPending ? 'VERIFIKASI' : isPerluDiperbaiki ? 'DITOLAK' : 'BELUM'}
+                {isLunas ? 'DIBAYAR' : isPending ? (isAdminLoggedIn && isTransferMoota ? 'CEK MOOTA' : 'VERIFIKASI') : isPerluDiperbaiki ? 'DITOLAK' : 'BELUM'}
               </Text>
             </View>
           </View>
@@ -737,27 +740,95 @@ export default function DetailTagihanScreen({ route, navigation }) {
 
         {/* Action Buttons: Admin / RT (Verifikasi & Tolak) */}
         {Boolean(isAdminLoggedIn && isPending) ? (
-          <View style={styles.verifyActionRow}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.btnReject]}
-              onPress={() => setRejectModalOpen(true)}
-              activeOpacity={0.85}
-              disabled={loading}
-            >
-              <X size={16} color={colors.danger} style={{ marginRight: 4 }} />
-              <Text style={styles.btnRejectText}>Tolak</Text>
-            </TouchableOpacity>
+          isTransferMoota ? (
+            <View style={{ marginTop: 12, marginBottom: 8 }}>
+              <View style={{
+                backgroundColor: '#ECFDF5',
+                borderColor: '#A7F3D0',
+                borderWidth: 1,
+                borderRadius: 10,
+                padding: 14,
+                marginBottom: 10
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Zap size={16} color="#059669" />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#065F46' }}>
+                    ⚡ Sedang Dicek Bot Moota
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: '#047857', lineHeight: 18 }}>
+                  Warga telah mengunggah bukti transfer. Sistem Bot Moota sedang memantau mutasi rekening bank tujuan. Tagihan akan otomatis LUNAS begitu mutasi masuk terkonfirmasi.
+                </Text>
+                <Text style={{ fontSize: 11, color: '#065F46', marginTop: 6, fontStyle: 'italic' }}>
+                  ℹ️ Pengurus tidak wajib melakukan verifikasi manual (persetujuan di bawah ini bersifat opsional / darurat).
+                </Text>
+              </View>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.btnApprove]}
-              onPress={handleApproveLunas}
-              activeOpacity={0.85}
-              disabled={loading}
-            >
-              <Check size={16} color={colors.white} style={{ marginRight: 4 }} />
-              <Text style={styles.btnApproveText}>Terima</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#CBD5E1',
+                  backgroundColor: '#F1F5F9'
+                }}
+                onPress={() => setShowManualApproval(!showManualApproval)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
+                  {showManualApproval ? '▲ Tutup Persetujuan Manual' : '⚙️ Persetujuan Manual (Opsional / Darurat)'}
+                </Text>
+              </TouchableOpacity>
+
+              {showManualApproval && (
+                <View style={[styles.verifyActionRow, { marginTop: 10 }]}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.btnReject]}
+                    onPress={() => setRejectModalOpen(true)}
+                    activeOpacity={0.85}
+                    disabled={loading}
+                  >
+                    <X size={16} color={colors.danger} style={{ marginRight: 4 }} />
+                    <Text style={styles.btnRejectText}>Tolak Manual</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.btnApprove]}
+                    onPress={handleApproveLunas}
+                    activeOpacity={0.85}
+                    disabled={loading}
+                  >
+                    <Check size={16} color={colors.white} style={{ marginRight: 4 }} />
+                    <Text style={styles.btnApproveText}>Setujui Manual</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.verifyActionRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.btnReject]}
+                onPress={() => setRejectModalOpen(true)}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                <X size={16} color={colors.danger} style={{ marginRight: 4 }} />
+                <Text style={styles.btnRejectText}>Tolak</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.btnApprove]}
+                onPress={handleApproveLunas}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                <Check size={16} color={colors.white} style={{ marginRight: 4 }} />
+                <Text style={styles.btnApproveText}>Terima</Text>
+              </TouchableOpacity>
+            </View>
+          )
         ) : null}
 
         {Boolean(isAdminLoggedIn && !isLunas && !isPending) ? (

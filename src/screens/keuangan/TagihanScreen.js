@@ -741,7 +741,26 @@ export default function TagihanScreen({ navigation }) {
                   </Text>
                 </View>
 
-                <AppBadge status={item.status} />
+                {!isWarga && isPending && (item.metode?.includes('Transfer') || item.metodeBayar?.includes('Transfer') || !item.metode || item.metode === 'Transfer Bank') ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#ECFDF5',
+                    borderColor: '#A7F3D0',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    gap: 4
+                  }}>
+                    <Zap size={11} color="#059669" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>
+                      Sedang Dicek Bot Moota
+                    </Text>
+                  </View>
+                ) : (
+                  <AppBadge status={item.status} label={isWarga && isPending ? 'Menunggu Verifikasi' : undefined} />
+                )}
               </View>
 
               {/* Rejection Alert Box */}
@@ -844,14 +863,26 @@ export default function TagihanScreen({ navigation }) {
                   ) : null}
 
                   {Boolean(isAdminLoggedIn && isPending) ? (
-                    <View style={{ flex: 1.5, minWidth: 95 }}>
-                      <AppButton
-                        title="Periksa Bukti"
-                        variant="primary"
-                        size="sm"
-                        onPress={() => navigation.navigate('DetailTagihan', { tagihan: item })}
-                      />
-                    </View>
+                    (item.metode?.includes('Transfer') || item.metodeBayar?.includes('Transfer') || !item.metode || item.metode === 'Transfer Bank') ? (
+                      <View style={{ flex: 1.5, minWidth: 95 }}>
+                        <AppButton
+                          title="Detail (Bot)"
+                          variant="secondary"
+                          size="sm"
+                          icon={<Zap size={13} color={colors.primary} />}
+                          onPress={() => navigation.navigate('DetailTagihan', { tagihan: item })}
+                        />
+                      </View>
+                    ) : (
+                      <View style={{ flex: 1.5, minWidth: 95 }}>
+                        <AppButton
+                          title="Periksa Bukti"
+                          variant="primary"
+                          size="sm"
+                          onPress={() => navigation.navigate('DetailTagihan', { tagihan: item })}
+                        />
+                      </View>
+                    )
                   ) : null}
 
                   {Boolean(isAdminLoggedIn) ? (

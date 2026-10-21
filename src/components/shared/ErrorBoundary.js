@@ -1,5 +1,6 @@
 import React from 'react'
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, ScrollView } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { AlertTriangle, RefreshCw } from 'lucide-react-native'
 import { colors, typography, spacing, radius } from '../../theme'
 import AppButton from '../shared/AppButton'
@@ -15,7 +16,9 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('IPL Mobile Uncaught Error:', error, errorInfo)
+    console.error('IPL Mobile Uncaught Error Message:', error?.message)
+    console.error('IPL Mobile Uncaught JS Stack:', String(error?.stack || ''))
+    console.error('IPL Mobile Component Stack:', String(errorInfo?.componentStack || ''))
   }
 
   handleReset = () => {

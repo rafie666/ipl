@@ -43,6 +43,7 @@ export const STORAGE_KEYS = {
   QRIS_ACCOUNTS: 'wargaku_qris_accounts',
   NOTIFICATIONS: 'wargaku_notifications',
   AUDIT_LOGS: 'wargaku_audit_logs',
+  MOOTA_MUTATIONS: 'wargaku_moota_mutations',
   JADWAL_SATPAM: 'wargaku_jadwal_satpam',
   PETUGAS_SATPAM: 'wargaku_petugas_satpam',
   SEEDED: 'wargaku_seeded_mobile_v5'
@@ -98,7 +99,8 @@ export async function saveStorageItem(keyName, data) {
         STORAGE_KEYS.BANK_ACCOUNTS,
         STORAGE_KEYS.QRIS_ACCOUNTS,
         STORAGE_KEYS.NOTIFICATIONS,
-        STORAGE_KEYS.AUDIT_LOGS
+        STORAGE_KEYS.AUDIT_LOGS,
+        STORAGE_KEYS.MOOTA_MUTATIONS
       ])
       const singleTables = new Set([STORAGE_KEYS.CONFIG, STORAGE_KEYS.ADMIN_AUTH])
 

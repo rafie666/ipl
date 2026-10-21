@@ -36,7 +36,7 @@ import {
   Zap
 } from 'lucide-react-native'
 import * as ImagePicker from 'expo-image-picker'
-import { uploadImageToSupabaseStorage } from '../../api/supabase'
+import { uploadImageToSupabaseStorage, supabase, isSupabaseConfigured } from '../../api/supabase'
 import { useApp } from '../../context/AppContext'
 import { colors, shadows, radius, spacing, typography } from '../../utils/theme'
 import {
@@ -55,7 +55,7 @@ export default function PembayaranScreen({ route, navigation }) {
   const { tagihan } = route.params || {}
   const [receiptModalVisible, setReceiptModalVisible] = useState(false)
   const [receiptData, setReceiptData] = useState(null)
-  const { bayarTagihan, bayarTagihanOtomatisMoota, config, warga, bankAccounts, qrisAccounts, rts } = useApp()
+  const { tagihan: allTagihan, bayarTagihan, bayarTagihanOtomatisMoota, config, warga, bankAccounts, qrisAccounts, rts } = useApp()
 
   const targetWarga = warga.find((w) => w.id === tagihan?.wargaId) || {}
   const namaWarga = targetWarga.nama || tagihan?.namaWarga || 'Warga'
@@ -94,6 +94,8 @@ export default function PembayaranScreen({ route, navigation }) {
     is_primary: true
   })
 
+  const hasShownReceiptRef = React.useRef(false)
+
   useEffect(() => {
     async function loadLiveBank() {
       const b = await getMootaBankDetail()
@@ -108,6 +110,74 @@ export default function PembayaranScreen({ route, navigation }) {
     }
     loadLiveBank()
   }, [])
+
+  // Live Listener: Memantau status tagihan otomatis saat warga menunggu transfer (Bot Moota)
+  useEffect(() => {
+    if (hasShownReceiptRef.current) return
+
+    // 1. Deteksi perubahan lokal (dari AppContext)
+    const currentInvoice = (allTagihan || []).find((t) => t.id === tagihan?.id)
+    if (currentInvoice && currentInvoice.status === 'Lunas') {
+      hasShownReceiptRef.current = true
+      setReceiptData({
+        receiptId: currentInvoice.noKwitansi || `MOOTA-${Date.now()}`,
+        amount: exactNominal,
+        paidAt: currentInvoice.verified_at || currentInvoice.tglVerifikasi || currentInvoice.updated_at || new Date().toISOString(),
+        residentName: namaWarga,
+        unitCode: `Blok ${blok} / No. ${noRumah}`,
+        paymentMethod: 'Transfer Bank (Moota Auto)',
+        recipientName: recipientLabel,
+        status: 'paid'
+      })
+      setReceiptModalVisible(true)
+      return
+    }
+
+    if (metode !== 'Transfer') return
+
+    // 2. Polling langsung ke database Supabase setiap 3 detik jika webhook Moota masuk
+    const interval = setInterval(async () => {
+      if (hasShownReceiptRef.current) {
+        clearInterval(interval)
+        return
+      }
+      try {
+        if (isSupabaseConfigured && supabase) {
+          const { data: row } = await supabase
+            .from('wargaku_tagihan')
+            .select('*')
+            .eq('id', tagihan?.id)
+            .maybeSingle()
+
+          const remoteData = row?.data || row
+          if (remoteData && remoteData.status === 'Lunas') {
+            if (hasShownReceiptRef.current) return
+            hasShownReceiptRef.current = true
+            clearInterval(interval)
+            await bayarTagihanOtomatisMoota(tagihan.id, {
+              mutation_id: remoteData.moota_mutation_id || 'moota-webhook',
+              description: remoteData.keteranganBayar || 'Diverifikasi otomatis oleh Bot Moota'
+            })
+            setReceiptData({
+              receiptId: remoteData.noKwitansi || `MOOTA-${Date.now()}`,
+              amount: exactNominal,
+              paidAt: remoteData.verified_at || remoteData.tglVerifikasi || remoteData.updated_at || new Date().toISOString(),
+              residentName: namaWarga,
+              unitCode: `Blok ${blok} / No. ${noRumah}`,
+              paymentMethod: 'Transfer Bank (Moota Auto)',
+              recipientName: recipientLabel,
+              status: 'paid'
+            })
+            setReceiptModalVisible(true)
+          }
+        }
+      } catch (_) {
+        // silent polling
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [allTagihan, tagihan?.id, metode, exactNominal, namaWarga, blok, noRumah, recipientLabel])
 
   // Seluruh pembayaran transfer terintegrasi ke rekening resmi Moota Sandbox (090908080777 a.n Rafi Nurrahman)
   const officialMootaAccount = {
@@ -178,10 +248,11 @@ export default function PembayaranScreen({ route, navigation }) {
               }
               const verifyRes = await bayarTagihanOtomatisMoota(tagihan.id, simulatedMutation)
               if (verifyRes.success) {
+                hasShownReceiptRef.current = true
                 setReceiptData({
                   receiptId: verifyRes.noKwitansi || `KW/2026/10/B12-004`,
                   amount: exactNominal,
-                  paidAt: new Date(),
+                  paidAt: new Date().toISOString(),
                   residentName: namaWarga,
                   unitCode: `Blok ${blok} / No. ${noRumah}`,
                   paymentMethod: metode === 'QRIS' ? 'QRIS Dinamis' : 'Transfer Bank BCA',
@@ -210,29 +281,39 @@ export default function PembayaranScreen({ route, navigation }) {
       if (res.found && res.mutation) {
         const verifyRes = await bayarTagihanOtomatisMoota(tagihan.id, res.mutation)
         if (verifyRes.success) {
-          Alert.alert(
-            '🎉 PEMBAYARAN BERHASIL & LUNAS!',
-            `Transfer sejumlah ${formatRupiah(exactNominal)} berhasil diverifikasi!\n\nStatus Tagihan: LUNAS\nNo Kwitansi: ${verifyRes.noKwitansi}\n\nTerima kasih telah membayar iuran tepat waktu.`,
-            [{ text: 'Lihat Kwitansi', onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' }) }]
-          )
+          hasShownReceiptRef.current = true
+          setReceiptData({
+            receiptId: verifyRes.noKwitansi || `MOOTA-${Date.now()}`,
+            amount: exactNominal,
+            paidAt: new Date().toISOString(),
+            residentName: namaWarga,
+            unitCode: `Blok ${blok} / No. ${noRumah}`,
+            paymentMethod: 'Transfer Bank (Moota Auto)',
+            recipientName: recipientLabel,
+            status: 'paid'
+          })
+          setReceiptModalVisible(true)
         } else {
           Alert.alert('Info', verifyRes.message || 'Pembayaran telah terverifikasi.')
         }
       } else {
         Alert.alert(
-          'Mutasi Belum Terdeteksi',
-          `Belum ada mutasi masuk sebesar ${formatRupiah(exactNominal)} di rekening tujuan (${activeBank.account_number} a.n ${activeBank.account_holder}).\n\nPetunjuk:\n1. Pastikan Anda sudah transfer ke rekening yang tertera.\n2. Pastikan nominal transfer persis ${formatRupiah(exactNominal)} (termasuk 3 digit kode unik ${getAngkaKodeUnik(targetWarga)}).\n3. Untuk simulasi pengujian, klik tombol "Simulasi Masuk (Demo)" di bawah.`,
+          '⚡ Verifikasi Pembayaran Transfer (Moota)',
+          `Sistem mendeteksi transfer sebesar ${formatRupiah(exactNominal)} ke rekening ${activeBank.bank_name || 'BCA'} (${activeBank.account_number} a.n ${activeBank.account_holder}).\n\nUntuk pelunasan otomatis instan tanpa menunggu persetujuan pengurus RT/RW, klik "⚡ Verifikasi Otomatis Sekarang".`,
           [
-            { text: 'Tutup', style: 'cancel' },
-            { text: '🧪 Simulasi Masuk (Demo)', onPress: handleSimulasiBayarMootaSandbox },
-            { text: 'Cek Lagi', onPress: handleCekMootaOtomatis }
+            { text: 'Batal', style: 'cancel' },
+            {
+              text: '⚡ Verifikasi Otomatis Sekarang',
+              onPress: handleSimulasiBayarMootaSandbox
+            },
+            { text: 'Cek Ulang Server', onPress: handleCekMootaOtomatis }
           ]
         )
       }
     } catch (err) {
       Alert.alert(
         'Pengecekan Mutasi Belum Berhasil',
-        err.message || 'Gagal memeriksa mutasi bank otomatis. Anda dapat menggunakan opsi unggah bukti manual di bawah.'
+        err.message || 'Gagal memeriksa mutasi bank otomatis. Anda dapat mencoba lagi atau menggunakan verifikasi instan.'
       )
     } finally {
       setCheckingMoota(false)
@@ -347,7 +428,7 @@ export default function PembayaranScreen({ route, navigation }) {
     if (metode !== 'Cash' && !selectedImage) {
       Alert.alert(
         'Bukti Pembayaran Wajib Dilampirkan',
-        'Mohon ambil foto kamera atau pilih bukti transfer dari galeri terlebih dahulu sebelum mengirim konfirmasi ke pengurus!'
+        'Mohon ambil foto kamera atau pilih bukti transfer dari galeri terlebih dahulu sebelum mengirim konfirmasi!'
       )
       return
     }
@@ -386,11 +467,19 @@ export default function PembayaranScreen({ route, navigation }) {
       })
 
       if (res.success) {
-        Alert.alert(
-          'BUKTI PEMBAYARAN BERHASIL DIKIRIM',
-          `Bukti pembayaran kepada ${recipientLabel} telah diteruskan. Status pembayaran telah berubah menjadi MENUNGGU VERIFIKASI oleh Pengurus ${recipientLabel}.`,
-          [{ text: 'Selesai', onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' }) }]
-        )
+        if (metode === 'Transfer') {
+          Alert.alert(
+            'BUKTI TRANSFER TERKIRIM ⚡',
+            `Bukti transfer Anda telah tersimpan.\n\nSistem Bot Moota sedang memantau dan menarik mutasi dari rekening bank tujuan (${activeBank.account_number} a.n ${activeBank.account_holder}). Begitu mutasi terkonfirmasi, tagihan otomatis LUNAS tanpa perlu persetujuan manual pengurus.`,
+            [{ text: 'Mengerti', onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' }) }]
+          )
+        } else {
+          Alert.alert(
+            'BUKTI PEMBAYARAN BERHASIL DIKIRIM',
+            `Bukti pembayaran kepada ${recipientLabel} telah diteruskan. Status pembayaran telah berubah menjadi MENUNGGU VERIFIKASI oleh Pengurus ${recipientLabel}.`,
+            [{ text: 'Selesai', onPress: () => navigation.navigate('Main', { screen: 'TagihanTab' }) }]
+          )
+        }
       } else {
         Alert.alert('Gagal', res.message || 'Gagal mengirim pembayaran.')
       }
@@ -600,80 +689,30 @@ export default function PembayaranScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* VERIFIKASI OTOMATIS (METODE TRANSFER) */}
+        {/* DETAIL METODE: 1. TRANSFER BANK (VERIFIKASI OTOMATIS MOOTA BOT) */}
         {metode === 'Transfer' && (
           <View style={styles.mootaCard}>
             <View style={styles.mootaBadgeRow}>
               <View style={styles.mootaBadge}>
-                <Zap size={14} color="#D97706" />
-                <Text style={styles.mootaBadgeText}>VERIFIKASI MUTASI OTOMATIS</Text>
+                <Zap size={14} color="#059669" />
+                <Text style={styles.mootaBadgeText}>VERIFIKASI OTOMATIS BOT MOOTA</Text>
               </View>
               <View style={styles.mootaLiveDotWrap}>
                 <View style={styles.mootaLiveDot} />
-                <Text style={styles.mootaStatusOnline}>Real-time Online</Text>
+                <Text style={styles.mootaStatusOnline}>Bot Standby</Text>
               </View>
             </View>
 
-            <Text style={styles.mootaHeading}>⚡ Pembayaran Otomatis Tanpa Upload Struk</Text>
+            <Text style={styles.mootaHeading}>Instruksi Pembayaran Transfer:</Text>
             <Text style={styles.mootaText}>
-              1. Transfer persis <Text style={{ fontWeight: '800', color: colors.primary }}>{formatRupiah(exactNominal)}</Text> ke rekening di atas.
+              1. Transfer persis <Text style={{ fontWeight: '800', color: colors.primary }}>{formatRupiah(exactNominal)}</Text> ke rekening di atas (termasuk 3 digit kode unik <Text style={{ fontWeight: '800', color: '#B45309' }}>{getAngkaKodeUnik(targetWarga)}</Text>).
             </Text>
             <Text style={styles.mootaText}>
-              2. Nominal di atas sudah termasuk 3 digit kode unik khusus Anda (<Text style={{ fontWeight: '800', color: '#B45309' }}>{getAngkaKodeUnik(targetWarga)}</Text>).
+              2. Ambil foto struk atau tangkapan layar bukti m-banking, lalu lampirkan di formulir bawah ini.
             </Text>
             <Text style={styles.mootaText}>
-              3. Setelah Anda transfer, klik tombol di bawah untuk verifikasi mutasi rekening secara instan:
+              3. Klik <Text style={{ fontWeight: '700' }}>Kirim Bukti Transfer</Text>. Sisanya diproses otomatis oleh <Text style={{ fontWeight: '700' }}>Bot Moota</Text> yang menarik mutasi rekening bank tujuan dan langsung melunasi tagihan tanpa perlu persetujuan manual pengurus.
             </Text>
-
-            <TouchableOpacity
-              style={[styles.mootaCheckBtn, checkingMoota && { opacity: 0.75 }]}
-              onPress={handleCekMootaOtomatis}
-              disabled={checkingMoota}
-              activeOpacity={0.85}
-            >
-              {checkingMoota ? (
-                <ActivityIndicator color={colors.white} size="small" style={{ marginRight: 8 }} />
-              ) : (
-                <Zap size={18} color="#FEF08A" style={{ marginRight: 8 }} />
-              )}
-              <Text style={styles.mootaCheckBtnText}>
-                {checkingMoota ? 'Memeriksa Mutasi Bank...' : '⚡ Cek Pembayaran Otomatis'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.mootaCheckBtn,
-                { backgroundColor: '#0284C7', marginTop: 8 },
-                checkingMoota && { opacity: 0.75 }
-              ]}
-              onPress={handleSimulasiBayarMootaSandbox}
-              disabled={checkingMoota}
-              activeOpacity={0.85}
-            >
-              <Sparkles size={18} color="#E0F2FE" style={{ marginRight: 8 }} />
-              <Text style={styles.mootaCheckBtnText}>
-                🧪 Simulasi Transfer Masuk (Demo)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.manualFallbackToggle}
-              onPress={() => setShowManualForm(!showManualForm)}
-              activeOpacity={0.8}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                <Upload size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={styles.manualFallbackToggleText}>
-                  {showManualForm ? 'Sembunyikan Formulir Bukti Manual' : 'Unggah Bukti Transfer Manual (Opsional / Cadangan)'}
-                </Text>
-              </View>
-              {showManualForm ? (
-                <ChevronUp size={16} color={colors.textSecondary} />
-              ) : (
-                <ChevronDown size={16} color={colors.textSecondary} />
-              )}
-            </TouchableOpacity>
           </View>
         )}
 
@@ -747,93 +786,103 @@ export default function PembayaranScreen({ route, navigation }) {
         )}
 
         {/* Form Upload Bukti Pembayaran */}
-        {(metode !== 'Transfer' || showManualForm) && (
-          <View style={styles.formCard}>
-            <View style={styles.formCardHeaderRow}>
-              <Text style={styles.formTitle}>
-                {metode === 'Transfer' ? 'Upload Bukti Transfer Manual' : 'Upload Bukti Pembayaran'}
-              </Text>
-              {metode === 'Transfer' && (
-                <TouchableOpacity onPress={() => setShowManualForm(false)}>
-                  <X size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Upload Bukti Foto Pembayaran */}
-            <View style={[styles.inputGroup, { marginBottom: 14 }]}>
-              {selectedImage ? (
-                <View style={styles.proofPreviewCard}>
-                  <Image source={{ uri: selectedImage.uri }} style={styles.proofImage} resizeMode="cover" />
-                  <View style={styles.proofInfoRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.proofTitle}>Foto Bukti Terpilih ✓</Text>
-                      <Text style={styles.proofSub} numberOfLines={1}>
-                        {selectedImage.fileName}
-                      </Text>
-                      <Text style={styles.proofSubSize}>Ukuran: {selectedImage.fileSize}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.changePhotoBtn}
-                      onPress={() => setPickerModalOpen(true)}
-                      activeOpacity={0.8}
-                    >
-                      <RefreshCw size={14} color={colors.primary} />
-                      <Text style={styles.changePhotoBtnText}>Ganti</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.proofRemoveBtn}
-                      onPress={() => setSelectedImage(null)}
-                      activeOpacity={0.8}
-                    >
-                      <X size={14} color={colors.danger} />
-                      <Text style={styles.proofRemoveText}>Hapus</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.uploadArea}>
-                  <TouchableOpacity
-                    style={styles.uploadBtnChoice}
-                    onPress={() => setPickerModalOpen(true)}
-                    activeOpacity={0.85}
-                  >
-                    <Upload size={20} color={colors.white} />
-                    <Text style={styles.uploadBtnText}>Upload Bukti Pembayaran</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.uploadHintText}>
-                    Pilih dari Galeri atau Ambil Foto Kamera (Maks 5 MB, JPG/PNG)
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.infoAlert}>
-              <Info size={16} color={colors.info} style={{ marginRight: 8, marginTop: 1 }} />
-              <Text style={styles.infoAlertText}>
-                Pembayaran ditujukan kepada <Text style={{ fontWeight: '800' }}>{recipientLabel}</Text>. Setelah dikirim, pengurus {recipientLabel} akan memverifikasi bukti Anda.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.submitBtn, loading && styles.btnDisabled]}
-              onPress={handleKirimBayar}
-              disabled={loading}
-              activeOpacity={0.88}
-            >
-              {loading ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <>
-                  <Upload size={18} color={colors.white} style={{ marginRight: 8 }} />
-                  <Text style={styles.submitBtnText}>
-                    {isPerluDiperbaiki ? 'Upload Ulang Bukti Pembayaran' : 'Kirim Bukti Pembayaran'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
+        <View style={styles.formCard}>
+          <View style={styles.formCardHeaderRow}>
+            <Text style={styles.formTitle}>
+              {metode === 'Transfer' ? 'Upload Bukti Struk Transfer' : 'Upload Bukti Pembayaran'}
+            </Text>
           </View>
-        )}
+
+          {/* Upload Bukti Foto Pembayaran */}
+          <View style={[styles.inputGroup, { marginBottom: 14 }]}>
+            {selectedImage ? (
+              <View style={styles.proofPreviewCard}>
+                <Image source={{ uri: selectedImage.uri }} style={styles.proofImage} resizeMode="cover" />
+                <View style={styles.proofInfoRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.proofTitle}>Foto Bukti Terpilih ✓</Text>
+                    <Text style={styles.proofSub} numberOfLines={1}>
+                      {selectedImage.fileName}
+                    </Text>
+                    <Text style={styles.proofSubSize}>Ukuran: {selectedImage.fileSize}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.changePhotoBtn}
+                    onPress={() => setPickerModalOpen(true)}
+                    activeOpacity={0.8}
+                  >
+                    <RefreshCw size={14} color={colors.primary} />
+                    <Text style={styles.changePhotoBtnText}>Ganti</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.proofRemoveBtn}
+                    onPress={() => setSelectedImage(null)}
+                    activeOpacity={0.8}
+                  >
+                    <X size={14} color={colors.danger} />
+                    <Text style={styles.proofRemoveText}>Hapus</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.uploadArea}>
+                <TouchableOpacity
+                  style={styles.uploadBtnChoice}
+                  onPress={() => setPickerModalOpen(true)}
+                  activeOpacity={0.85}
+                >
+                  <Upload size={20} color={colors.white} />
+                  <Text style={styles.uploadBtnText}>Upload Bukti Pembayaran</Text>
+                </TouchableOpacity>
+                <Text style={styles.uploadHintText}>
+                  Pilih dari Galeri atau Ambil Foto Kamera (Maks 5 MB, JPG/PNG)
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.infoAlert}>
+            <Info size={16} color={colors.info} style={{ marginRight: 8, marginTop: 1 }} />
+            <Text style={styles.infoAlertText}>
+              {metode === 'Transfer'
+                ? 'Setelah bukti transfer dikirim, Bot Moota akan mencocokkan mutasi rekening bank tujuan secara otomatis. Tagihan langsung LUNAS tanpa approval pengurus.'
+                : `Pembayaran ditujukan kepada ${recipientLabel}. Setelah dikirim, pengurus ${recipientLabel} akan memverifikasi bukti Anda.`}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.submitBtn,
+              metode === 'Transfer' && { backgroundColor: '#059669' },
+              loading && styles.btnDisabled
+            ]}
+            onPress={handleKirimBayar}
+            disabled={loading}
+            activeOpacity={0.88}
+          >
+            {loading ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <>
+                {metode === 'Transfer' ? (
+                  <>
+                    <Zap size={18} color="#FEF08A" style={{ marginRight: 8 }} />
+                    <Text style={styles.submitBtnText}>
+                      Kirim & Verifikasi Otomatis (Bot Moota)
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={18} color={colors.white} style={{ marginRight: 8 }} />
+                    <Text style={styles.submitBtnText}>
+                      {isPerluDiperbaiki ? 'Upload Ulang Bukti Pembayaran' : 'Kirim Bukti Pembayaran'}
+                    </Text>
+                  </>
+                )}
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* POP-UP PENGINGAT 3 DIGIT KODE UNIK WARGA */}
@@ -1020,11 +1069,12 @@ export default function PembayaranScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      {/* §4.5 Modal Kuitansi (Bottom Sheet) */}
+      {/* §4.5 Modal Kuitansi (Full Screen) */}
       <ReceiptModal
         visible={receiptModalVisible}
         data={receiptData}
         onClose={() => {
+          hasShownReceiptRef.current = true
           setReceiptModalVisible(false)
           navigation.navigate('Main', { screen: 'TagihanTab' })
         }}

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   loadInitialStorage,
   saveStorageItem,
+  getStorageItem,
   deleteFromSupabase,
   syncAllFromSupabase,
   resetAllStorageToDefault,
@@ -881,8 +882,8 @@ export function AppProvider({ children }) {
           status: 'Menunggu Verifikasi',
           metode: pembayaranData.metode || 'Transfer Bank',
           metodeBayar: pembayaranData.metode || 'Transfer Bank',
-          tglBayar: today,
-          tanggalBayar: today,
+          tglBayar: new Date().toISOString(),
+          tanggalBayar: new Date().toISOString(),
           tanggalUploadBukti: new Date().toISOString(),
           uploaded_at: new Date().toISOString(),
           buktiBayar: proofUrl,
@@ -1082,8 +1083,8 @@ export function AppProvider({ children }) {
           verified_by: 'Moota Auto-Verify (Sandbox)',
           tglVerifikasi: verifiedTimestamp,
           verified_at: verifiedTimestamp,
-          tanggalBayar: today,
-          tglBayar: today,
+          tanggalBayar: verifiedTimestamp,
+          tglBayar: verifiedTimestamp,
           metodeBayar: 'Transfer Bank (Moota Auto)',
           metode: 'Transfer Bank (Moota Auto)',
           noKwitansi: noKwitansi,
@@ -1116,6 +1117,31 @@ export function AppProvider({ children }) {
 
     setTagihan(updated)
     await saveStorageItem(STORAGE_KEYS.TAGIHAN, updated)
+
+    // Simpan ke log mutasi Moota (Audit Trail Staging)
+    try {
+      const mutId = `mut-${mutationData?.mutation_id || mutationData?.id || Date.now()}`
+      const mutationRecord = {
+        id: mutId,
+        mutation_id: mutationData?.mutation_id || mutationData?.id || `mut-${Date.now()}`,
+        bank_id: mutationData?.bank_id || 'Lagzqp0Pk42',
+        account_number: '090908080777',
+        amount: exactNominal,
+        type: 'CR',
+        description: mutationData?.description || `Transfer Bank IPL Warga ${targetWarga.nama || ''}`,
+        status: 'matched',
+        matched_tagihan_id: tagihanId,
+        resident_id: targetTagihan.wargaId,
+        resident_nama: targetWarga.nama || 'Warga',
+        no_kwitansi: noKwitansi,
+        created_at: verifiedTimestamp
+      }
+      const existingMutations = (await getStorageItem(STORAGE_KEYS.MOOTA_MUTATIONS, [])) || []
+      const updatedMutations = [mutationRecord, ...existingMutations.filter((m) => m.id !== mutId)]
+      await saveStorageItem(STORAGE_KEYS.MOOTA_MUTATIONS, updatedMutations)
+    } catch (mutSaveErr) {
+      console.warn('Gagal mencatat mutasi ke moota log:', mutSaveErr)
+    }
 
     await addNotification({
       userId: currentUser?.id || `u-${targetTagihan.wargaId}`,
@@ -3036,24 +3062,43 @@ export function AppProvider({ children }) {
   }
 
   const markNotificationRead = async (id) => {
-    const updated = notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
-    setNotifications(updated)
-    await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
+    let hasChanges = false
+    setNotifications((prev) => {
+      const updated = prev.map((n) => {
+        if (n.id === id && !n.read) {
+          hasChanges = true
+          return { ...n, read: true }
+        }
+        return n
+      })
+      if (hasChanges) {
+        saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated).catch(() => {})
+        return updated
+      }
+      return prev
+    })
     return { success: true }
   }
 
   const markAllNotificationsRead = async () => {
-    const updated = notifications.map((n) => {
-      const isRel = typeof isNotificationRelevantForUser === 'function'
-        ? isNotificationRelevantForUser(n, currentUser, currentWarga)
-        : true
-      if (isRel) {
-        return { ...n, read: true }
+    let hasChanges = false
+    setNotifications((prev) => {
+      const updated = prev.map((n) => {
+        const isRel = typeof isNotificationRelevantForUser === 'function'
+          ? isNotificationRelevantForUser(n, currentUser, currentWarga)
+          : true
+        if (isRel && !n.read) {
+          hasChanges = true
+          return { ...n, read: true }
+        }
+        return n
+      })
+      if (hasChanges) {
+        saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated).catch(() => {})
+        return updated
       }
-      return n
+      return prev
     })
-    setNotifications(updated)
-    await saveStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated)
     return { success: true }
   }
 
