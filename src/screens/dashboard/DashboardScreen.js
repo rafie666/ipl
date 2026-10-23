@@ -47,7 +47,8 @@ import {
   UserPlus,
   Edit3,
   Search,
-  Check
+  Check,
+  Cpu
 } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import TopAppBar from '../../components/layout/TopAppBar'
@@ -387,10 +388,33 @@ export default function DashboardScreen({ navigation }) {
               totalKas={saldoKas || 0}
               serverStatus="Online"
               isCloudConnected={true}
-              onPressSettings={() => navigation.navigate('Pengaturan')}
+              onPressSettings={() => navigation.navigate('AdministrasiSistem')}
               onPressManageUsers={() => navigation.navigate('WargaList')}
-              onPressCard={() => navigation.navigate('Pengaturan')}
+              onPressCard={() => navigation.navigate('AdministrasiSistem')}
             />
+
+            {/* Banner Akses Administrasi Sistem */}
+            <TouchableOpacity
+              style={styles.adminSistemBanner}
+              onPress={() => navigation.navigate('AdministrasiSistem')}
+              activeOpacity={0.85}
+            >
+              <View style={styles.adminSistemIconWrap}>
+                <Cpu size={20} color="#059669" />
+              </View>
+              <View style={{ flex: 1, marginHorizontal: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.adminSistemTitle}>Administrasi Sistem</Text>
+                  <View style={styles.adminSistemPill}>
+                    <Text style={styles.adminSistemPillText}>KHUSUS ADMIN</Text>
+                  </View>
+                </View>
+                <Text style={styles.adminSistemDesc}>
+                  Manajemen CRUD Wilayah RT/RW & Instrumen Reset Database
+                </Text>
+              </View>
+              <ChevronRight size={18} color="#059669" />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -3343,5 +3367,48 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '800',
     color: '#DC2626'
+  },
+  adminSistemBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    ...shadows.card
+  },
+  adminSistemIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#A7F3D0'
+  },
+  adminSistemTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#064E3B'
+  },
+  adminSistemPill: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4
+  },
+  adminSistemPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF'
+  },
+  adminSistemDesc: {
+    fontSize: 10.5,
+    color: '#047857',
+    marginTop: 2
   }
 })

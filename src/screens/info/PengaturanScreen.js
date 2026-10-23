@@ -39,6 +39,7 @@ import {
   Compass,
   Settings,
   LayoutGrid,
+  Cpu,
 } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import { colors, spacing, radius, shadows, typography } from '../../utils/theme'
@@ -253,6 +254,7 @@ export default function PengaturanScreen({ navigation }) {
       { id: 'lingkungan', label: 'Identitas RW', icon: Building2, bg: '#F0F9FF', iconColor: '#0284C7' },
       { id: 'notifikasi', label: 'Notifikasi', icon: Bell, bg: '#F0FDF4', iconColor: '#16A34A' },
       { id: 'darurat', label: 'Darurat', icon: PhoneCall, bg: '#FFF1F2', iconColor: '#E11D48' },
+      { id: 'administrasi_sistem', label: 'Admin Sistem', icon: Cpu, bg: '#ECFDF5', iconColor: '#059669' },
       { id: 'pengaturan', label: 'Pengaturan IT', icon: Settings, bg: '#F1F5F9', iconColor: '#047857' },
       { id: 'reset', label: 'Reset Data', icon: RefreshCw, bg: '#FEF2F2', iconColor: '#DC2626' },
     ]
@@ -278,6 +280,7 @@ export default function PengaturanScreen({ navigation }) {
       case 'notifikasi': return navigation.navigate('NotifikasiPerangkat')
       case 'darurat': return navigation.navigate('KontakDarurat')
       case 'profil': return navigation.navigate('EditProfileWarga')
+      case 'administrasi_sistem': return navigation.navigate('AdministrasiSistem')
       case 'pengaturan': return navigation.navigate('Pengaturan')
       case 'reset': return handleResetData()
       default: break

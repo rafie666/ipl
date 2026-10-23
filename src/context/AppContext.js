@@ -129,11 +129,18 @@ export function AppProvider({ children }) {
         const sanitizedBanks = [mootaOfficialAccount, ...initialBanks]
 
         let initialKas = initial.kas || []
-        const hasKeluar = initialKas.some((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
-        if (!hasKeluar) {
-          const samplePengeluaran = (INITIAL_KAS || []).filter((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
-          initialKas = [...samplePengeluaran, ...initialKas]
+        // Deteksi apakah data kas masih menggunakan data lama yang nilainya seragam (flat)
+        const isOldFlatKas = initialKas.length < 30 || initialKas.some((k) => k.nominal === 5000000 && k.id === 'kas-rw-01-1')
+        if (isOldFlatKas) {
+          initialKas = INITIAL_KAS
           await saveStorageItem(STORAGE_KEYS.KAS, initialKas)
+        } else {
+          const hasKeluar = initialKas.some((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
+          if (!hasKeluar) {
+            const samplePengeluaran = (INITIAL_KAS || []).filter((k) => k.tipe === 'Keluar' || k.tipe === 'Pengeluaran')
+            initialKas = [...samplePengeluaran, ...initialKas]
+            await saveStorageItem(STORAGE_KEYS.KAS, initialKas)
+          }
         }
 
         // Normalisasi warga: pastikan Bambang Sutrisno (w-1) dan warga murni berstatus jabatan 'warga'
@@ -2553,11 +2560,18 @@ export function AppProvider({ children }) {
     const rawNumber = String(data.number || nextSeq).replace(/[^0-9]/g, '') || String(nextSeq)
     const formattedNum = rawNumber.padStart(2, '0')
     const newId = `rt-${Date.now()}`
+    const targetRw = (rws || []).find((r) => r.id === data.rw_id)
+    const resolvedRwId = data.rw_id || targetRw?.id || (rws[0]?.id || 'rw-01')
+    const resolvedRwName = targetRw?.name || data.rw || (rws.find((r) => r.id === resolvedRwId)?.name || 'RW 01')
+    const resolvedRwNum = targetRw?.number || resolvedRwId.replace('rw-', '') || '01'
+
     const newItem = {
       id: newId,
-      name: data.name?.trim() || `RT ${formattedNum}`,
+      name: data.name?.trim() || `RT ${formattedNum} / ${resolvedRwName}`,
       number: formattedNum,
-      rw: data.rw || config?.rw?.replace(/[^0-9]/g, '') || '15',
+      rw: resolvedRwName,
+      rw_id: resolvedRwId,
+      rw_number: resolvedRwNum,
       user_id: null,
       status: 'active',
       keterangan: data.keterangan?.trim() || `Mencakup wilayah warga RT ${formattedNum}`,
@@ -2572,6 +2586,7 @@ export function AppProvider({ children }) {
     const updated = [...rts, newItem]
     setRts(updated)
     await saveStorageItem(STORAGE_KEYS.RTS, updated)
+    await logActivity({ action: 'CREATE_RT', entity: 'rt', entityId: newId, details: `Tambah RT: ${newItem.name}` })
     return { success: true, rt: newItem, id: newId }
   }
 
@@ -2583,6 +2598,91 @@ export function AppProvider({ children }) {
     setRts(updated)
     await saveStorageItem(STORAGE_KEYS.RTS, updated)
     await deleteFromSupabase(STORAGE_KEYS.RTS, rtId)
+    await logActivity({ action: 'DELETE_RT', entity: 'rt', entityId: rtId, details: `Hapus RT: ${rtId}` })
+    return { success: true }
+  }
+
+  // RW Data CRUD (Manajemen Wilayah Admin IT)
+  const addRwData = async (data) => {
+    const nextSeq = rws.length + 1
+    const rawNumber = String(data.number || nextSeq).replace(/[^0-9]/g, '') || String(nextSeq)
+    const formattedNum = rawNumber.padStart(2, '0')
+    const newId = `rw-${formattedNum}`
+
+    if (rws.some((r) => r.id === newId || r.number === formattedNum)) {
+      return { success: false, message: `RW ${formattedNum} sudah terdaftar!` }
+    }
+
+    const newItem = {
+      id: newId,
+      name: data.name?.trim() || `RW ${formattedNum}`,
+      number: formattedNum,
+      user_id: `u-rw-${formattedNum}`,
+      status: 'active',
+      keterangan: data.keterangan?.trim() || `Wilayah RW ${formattedNum}`,
+      ketua: data.ketua?.trim() || '',
+      bendahara: data.bendahara?.trim() || '',
+      kontak: data.kontak?.trim() || '',
+      rekening: data.rekening?.trim() || ''
+    }
+    const updated = [...rws, newItem]
+    setRws(updated)
+    await saveStorageItem(STORAGE_KEYS.RWS, updated)
+    await logActivity({ action: 'CREATE_RW', entity: 'rw', entityId: newId, details: `Tambah RW: ${newItem.name}` })
+    return { success: true, rw: newItem, id: newId }
+  }
+
+  const updateRwData = async (rwId, data) => {
+    const updated = rws.map((r) => (r.id === rwId ? { ...r, ...data } : r))
+    setRws(updated)
+    await saveStorageItem(STORAGE_KEYS.RWS, updated)
+    await logActivity({ action: 'UPDATE_RW', entity: 'rw', entityId: rwId, details: `Perbarui RW: ${data.name || rwId}` })
+    return { success: true }
+  }
+
+  const deleteRwData = async (rwId) => {
+    if (rws.length <= 1) {
+      return { success: false, message: 'Minimal harus ada 1 RW dalam sistem!' }
+    }
+    const attachedRts = rts.filter((r) => r.rw_id === rwId)
+    if (attachedRts.length > 0) {
+      return {
+        success: false,
+        message: `Tidak dapat menghapus RW ini karena masih memiliki ${attachedRts.length} RT binaan! Hapus atau pindahkan RT terlebih dahulu.`
+      }
+    }
+    const updated = rws.filter((r) => r.id !== rwId)
+    setRws(updated)
+    await saveStorageItem(STORAGE_KEYS.RWS, updated)
+    await deleteFromSupabase(STORAGE_KEYS.RWS, rwId)
+    await logActivity({ action: 'DELETE_RW', entity: 'rw', entityId: rwId, details: `Hapus RW: ${rwId}` })
+    return { success: true }
+  }
+
+  // Reset Khusus Administrasi Sistem Admin IT
+  const resetDataWargaDanWilayah = async () => {
+    setWarga(INITIAL_WARGA)
+    setRts(INITIAL_RTS)
+    setRws(INITIAL_RWS)
+    setTagihan(INITIAL_TAGIHAN)
+    await saveStorageItem(STORAGE_KEYS.WARGA, INITIAL_WARGA)
+    await saveStorageItem(STORAGE_KEYS.RTS, INITIAL_RTS)
+    await saveStorageItem(STORAGE_KEYS.RWS, INITIAL_RWS)
+    await saveStorageItem(STORAGE_KEYS.TAGIHAN, INITIAL_TAGIHAN)
+    await logActivity({
+      action: 'RESET_WARGA_WILAYAH',
+      details: 'Reset total seluruh data warga, RW, RT, dan tagihan ke default'
+    })
+    return { success: true }
+  }
+
+  const resetKasLingkunganNol = async () => {
+    setKas([])
+    await saveStorageItem(STORAGE_KEYS.KAS, [])
+    await logActivity({
+      action: 'RESET_KAS_NOL',
+      details: 'Reset saldo kas lingkungan dan seluruh transaksi menjadi Rp 0'
+    })
     return { success: true }
   }
 
@@ -3189,6 +3289,11 @@ export function AppProvider({ children }) {
         addRtData,
         updateRtData,
         deleteRtData,
+        addRwData,
+        updateRwData,
+        deleteRwData,
+        resetDataWargaDanWilayah,
+        resetKasLingkunganNol,
         users,
         addUserAccount,
         updateUserAccount,

@@ -472,13 +472,9 @@ export function filterKasByRole(kasList = [], currentUser = null) {
     )
   }
   if (currentUser.role === 'warga') {
-    const userRtId = currentUser.rt_id || 'rt-01-01'
-    const userRwId = currentUser.rw_id || 'rw-01'
-    return kasList.filter((k) => {
-      const matchRt = k.rt_id === userRtId || (k.scope === 'rt' && k.rt_id === userRtId)
-      const matchRw = k.scope === 'rw' || k.rw_id === userRwId || (!k.rt_id && (!k.rw_id || k.rw_id === userRwId))
-      return matchRt || matchRw
-    })
+    // Warga berhak melihat transparansi seluruh buku kas lingkungan (Semua RW & RT),
+    // penyaringan spesifik (Semua/RW/RT) dilakukan pada level tampilan Buku Kas.
+    return kasList
   }
   return []
 }

@@ -46,7 +46,7 @@ export const STORAGE_KEYS = {
   MOOTA_MUTATIONS: 'wargaku_moota_mutations',
   JADWAL_SATPAM: 'wargaku_jadwal_satpam',
   PETUGAS_SATPAM: 'wargaku_petugas_satpam',
-  SEEDED: 'wargaku_seeded_mobile_v5'
+  SEEDED: 'wargaku_seeded_mobile_v6'
 }
 
 export async function getStorageItem(key, fallbackValue = null) {

@@ -60,6 +60,7 @@ import NotifikasiPerangkatScreen from '../screens/info/NotifikasiPerangkatScreen
 import NotifikasiScreen from '../screens/info/NotifikasiScreen'
 import MootaGatewayScreen from '../screens/keuangan/MootaGatewayScreen'
 import EditProfileWargaScreen from '../screens/warga/EditProfileWargaScreen'
+import AdministrasiSistemScreen from '../screens/admin/AdministrasiSistemScreen'
 
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
@@ -263,6 +264,7 @@ export default function RootNavigator() {
         <Stack.Screen name="NotifikasiPerangkat" component={NotifikasiPerangkatScreen} />
         <Stack.Screen name="MootaGateway" component={MootaGatewayScreen} />
         <Stack.Screen name="EditProfileWarga" component={EditProfileWargaScreen} />
+        <Stack.Screen name="AdministrasiSistem" component={AdministrasiSistemScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   )

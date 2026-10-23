@@ -25,6 +25,11 @@ import {
   CheckCircle2,
   CreditCard,
   ChevronRight,
+  ChevronDown,
+  Check,
+  Globe,
+  Building2,
+  Home,
   Info,
   FileText
 } from 'lucide-react-native'
@@ -42,7 +47,8 @@ import { colors, typography, spacing, radius, shadows } from '../../utils/theme'
 
 export default function KasScreen({ navigation, route }) {
   const {
-    scopedKas,
+    kas = [],
+    scopedKas = [],
     tambahKas,
     deleteKas,
     isAdminLoggedIn,
@@ -54,6 +60,7 @@ export default function KasScreen({ navigation, route }) {
     isAdmin,
     currentUser,
     rts = [],
+    rws = [],
     currentRT,
     currentRW,
     refreshData,
@@ -63,7 +70,8 @@ export default function KasScreen({ navigation, route }) {
     bayarTagihanOtomatisMoota
   } = useApp()
 
-  const [scopeFilter, setScopeFilter] = useState('Semua') // 'Semua' | 'RT' | 'RW'
+  const [scopeFilter, setScopeFilter] = useState('Semua') // 'Semua' | 'RW' | 'RT'
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'Semua') // 'Semua' | 'Pengeluaran' | 'Pemasukan' | 'Transparansi Iuran'
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectedKasItem, setSelectedKasItem] = useState(null)
@@ -91,11 +99,76 @@ export default function KasScreen({ navigation, route }) {
 
   const isReadonlyForWarga = isWarga && !isAdminLoggedIn
 
-  // Hitung akumulasi berdasarkan scope yang dipilih
-  const scopeFilteredKas = (scopedKas || []).filter((item) => {
-    if (scopeFilter === 'Semua') return true
-    if (scopeFilter === 'RT') return item.scope === 'rt' || Boolean(item.rt_id)
-    if (scopeFilter === 'RW') return item.scope === 'rw' || (!item.rt_id)
+  // Resolusi identitas RT & RW warga untuk penyesuaian filter transparan
+  const userRtId = currentUser?.rt_id || currentRT?.id || 'rt-01-01'
+  const userRwId = currentUser?.rw_id || currentRT?.rw_id || currentRW?.id || 'rw-01'
+  const wargaRt = (rts || []).find((r) => r.id === userRtId) || currentRT
+  const wargaRw = (rws || []).find((r) => r.id === userRwId) || currentRW
+  const wargaRtName = wargaRt?.name || 'RT 01'
+  const wargaRwName = wargaRw?.name || 'RW 01'
+  const rtsInUserRw = (rts || []).filter((r) => r.rw_id === userRwId).map((r) => r.id)
+
+  // Opsi Dropdown Cakupan Kas
+  const scopeOptions = [
+    {
+      id: 'Semua',
+      title: 'Semua Kas (Seluruh RW & RT)',
+      badge: 'Transparansi Penuh',
+      desc: 'Mencakup seluruh saldo uang kas & mutasi semua RW dan RT',
+      icon: Globe,
+      color: colors.primary,
+      bg: '#F0FDF4',
+      borderColor: '#BBF7D0'
+    },
+    {
+      id: 'RW',
+      title: `Kas ${wargaRwName} (Gabungan Semua RT)`,
+      badge: `${wargaRwName}`,
+      desc: `Total saldo kas ${wargaRwName} & seluruh RT di wilayah ini`,
+      icon: Building2,
+      color: '#4F46E5',
+      bg: '#EEF2FF',
+      borderColor: '#C7D2FE'
+    },
+    {
+      id: 'RT',
+      title: `Kas ${wargaRtName} (Wilayah Sendiri)`,
+      badge: `${wargaRtName}`,
+      desc: `Khusus mutasi kas & saldo RT Anda (${wargaRtName})`,
+      icon: Home,
+      color: '#059669',
+      bg: '#ECFDF5',
+      borderColor: '#A7F3D0'
+    }
+  ]
+  const currentScopeOption = scopeOptions.find((o) => o.id === scopeFilter) || scopeOptions[0]
+
+  // Sumber kas: warga berhak melihat semua kas untuk transparansi publik
+  const kasSource = kas && kas.length > 0 ? kas : (scopedKas || [])
+
+  // Hitung akumulasi kas berdasarkan aturan transparansi warga & peran
+  const scopeFilteredKas = (kasSource || []).filter((item) => {
+    if (scopeFilter === 'Semua') {
+      // 1. Semua: bisa lihat semua saldo uang kas, mencakup SEMUA RW dan RT yang ada
+      return true
+    }
+    if (scopeFilter === 'RW') {
+      // 2. RW: Sesuai RW tempat warga berada. RW lain TIDAK BISA dilihat cuma RW dia doang.
+      // Saldo/uang kas RW artinya uang dari SEMUA RT yang ada di RW tersebut plus uang kas tingkat RW itu
+      const itemRwId = item.rw_id || (rts.find((r) => r.id === item.rt_id)?.rw_id)
+      if (itemRwId && itemRwId !== userRwId) {
+        return false // RW lain tidak bisa dilihat
+      }
+
+      const matchRwDirect = item.rw_id === userRwId
+      const matchRtInRw = item.rt_id && rtsInUserRw.includes(item.rt_id)
+      const matchRwScope = item.scope === 'rw' && (!item.rw_id || item.rw_id === userRwId)
+      return matchRwDirect || matchRtInRw || matchRwScope
+    }
+    if (scopeFilter === 'RT') {
+      // 3. RT: Warga bisa lihat kas uang dari RT-nya sendiri, TIDAK BISA lihat kas RT sebelah
+      return item.rt_id === userRtId || (item.scope === 'rt' && item.rt_id === userRtId)
+    }
     return true
   })
 
@@ -217,7 +290,11 @@ export default function KasScreen({ navigation, route }) {
     const isMasuk = item.tipe === 'Masuk' || item.tipe === 'Pemasukan'
     const deskripsi = item.deskripsi || item.keterangan || '-'
     const isRw = item.scope === 'rw' || !item.rt_id
-    const scopeLabel = isRw ? 'RW 01' : (rts.find((r) => r.id === item.rt_id)?.name || 'RT 01')
+    const itemRw = (rws || []).find((r) => r.id === item.rw_id)
+    const itemRt = (rts || []).find((r) => r.id === item.rt_id)
+    const scopeLabel = isRw
+      ? (itemRw?.name || (item.rw_id ? item.rw_id.toUpperCase().replace('-', ' ') : wargaRwName))
+      : (itemRt?.name || (item.rt_id ? item.rt_id.toUpperCase().replace('-', ' ') : wargaRtName))
 
     return (
       <AppCard
@@ -308,43 +385,139 @@ export default function KasScreen({ navigation, route }) {
       <TopAppBar title="Buku Kas Lingkungan" navigation={navigation} />
 
       <View style={styles.topSection}>
-        {/* Scope Selector: Semua / RT / RW */}
-        <View style={styles.scopeSelectorRow}>
-          <TouchableOpacity
-            style={[styles.scopeSelectorBtn, scopeFilter === 'Semua' && styles.scopeSelectorBtnActive]}
-            onPress={() => setScopeFilter('Semua')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.scopeSelectorText, scopeFilter === 'Semua' && styles.scopeSelectorTextActive]}>
-              Semua
-            </Text>
-          </TouchableOpacity>
+        {/* Dropdown Cakupan Wilayah Kas */}
+        <View style={styles.dropdownContainer}>
+          <View style={styles.dropdownLabelRow}>
+            <Text style={styles.dropdownSectionLabel}>LINGKUP TRANSPARANSI KAS</Text>
+            <View style={styles.transparansiBadge}>
+              <View style={styles.transparansiBadgeDot} />
+              <Text style={styles.transparansiBadgeText}>
+                {scopeFilter === 'Semua'
+                  ? 'Transparansi Lingkungan'
+                  : scopeFilter === 'RW'
+                  ? `Wilayah ${wargaRwName}`
+                  : `Wilayah ${wargaRtName}`}
+              </Text>
+            </View>
+          </View>
 
           <TouchableOpacity
-            style={[styles.scopeSelectorBtn, scopeFilter === 'RT' && styles.scopeSelectorBtnActiveGreen]}
-            onPress={() => setScopeFilter('RT')}
-            activeOpacity={0.8}
+            style={[styles.dropdownTrigger, dropdownOpen && styles.dropdownTriggerActive]}
+            onPress={() => setDropdownOpen((prev) => !prev)}
+            activeOpacity={0.85}
+            accessibilityRole="combobox"
+            accessibilityLabel={`Pilih lingkup kas, saat ini: ${currentScopeOption.title}`}
           >
-            <Text style={[styles.scopeSelectorText, scopeFilter === 'RT' && styles.scopeSelectorTextActive]}>
-              Kas {currentRT?.name || 'RT'}
-            </Text>
+            <View style={styles.dropdownTriggerLeft}>
+              <View
+                style={[
+                  styles.dropdownIconBadge,
+                  { backgroundColor: currentScopeOption.bg, borderColor: currentScopeOption.borderColor }
+                ]}
+              >
+                <currentScopeOption.icon size={18} color={currentScopeOption.color} />
+              </View>
+              <View style={styles.dropdownTextWrap}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.dropdownSelectedTitle} numberOfLines={1}>
+                    {currentScopeOption.title}
+                  </Text>
+                </View>
+                <Text style={styles.dropdownSelectedDesc} numberOfLines={1}>
+                  {currentScopeOption.desc}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.dropdownChevronWrap, dropdownOpen && styles.dropdownChevronWrapActive]}>
+              <ChevronDown
+                size={16}
+                color={dropdownOpen ? colors.primary : colors.textPrimary}
+                style={{ transform: [{ rotate: dropdownOpen ? '180deg' : '0deg' }] }}
+              />
+            </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.scopeSelectorBtn, scopeFilter === 'RW' && styles.scopeSelectorBtnActivePurple]}
-            onPress={() => setScopeFilter('RW')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.scopeSelectorText, scopeFilter === 'RW' && styles.scopeSelectorTextActive]}>
-              Kas {currentRW?.name || 'RW'}
-            </Text>
-          </TouchableOpacity>
+          {/* Expandable Dropdown Menu */}
+          {dropdownOpen && (
+            <View style={styles.dropdownMenu}>
+              {scopeOptions.map((opt, idx) => {
+                const isSelected = scopeFilter === opt.id
+                const IconComponent = opt.icon
+                return (
+                  <React.Fragment key={opt.id}>
+                    {idx > 0 && <View style={styles.dropdownItemDivider} />}
+                    <TouchableOpacity
+                      style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setScopeFilter(opt.id)
+                        setDropdownOpen(false)
+                      }}
+                      activeOpacity={0.75}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Pilih ${opt.title}`}
+                    >
+                      <View
+                        style={[
+                          styles.dropdownItemIconWrap,
+                          { backgroundColor: opt.bg, borderColor: opt.borderColor }
+                        ]}
+                      >
+                        <IconComponent size={16} color={opt.color} />
+                      </View>
+                      <View style={styles.dropdownItemContent}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 6 }}>
+                            <Text
+                              style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleActive]}
+                              numberOfLines={1}
+                            >
+                              {opt.title}
+                            </Text>
+                            <View style={[styles.dropdownItemPill, { backgroundColor: opt.bg }]}>
+                              <Text style={[styles.dropdownItemPillText, { color: opt.color }]}>
+                                {opt.badge}
+                              </Text>
+                            </View>
+                          </View>
+                          {isSelected ? (
+                            <View style={styles.checkIconWrap}>
+                              <Check size={13} color="#059669" strokeWidth={2.5} />
+                            </View>
+                          ) : (
+                            <View style={styles.uncheckCircle} />
+                          )}
+                        </View>
+                        <Text style={styles.dropdownItemDesc}>{opt.desc}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                )
+              })}
+            </View>
+          )}
         </View>
 
         {/* Saldo Kas Card (Hanya saat di luar tab Transparansi) */}
         {activeTab !== 'Transparansi Iuran' && (
           <AppCard style={styles.saldoCard}>
-            <Text style={styles.saldoLabel}>TOTAL SALDO KAS</Text>
+            <View style={styles.saldoCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Wallet size={15} color={colors.primary} />
+                <Text style={styles.saldoLabel} numberOfLines={1}>
+                  {scopeFilter === 'Semua'
+                    ? 'TOTAL SALDO KAS (SELURUH RW & RT)'
+                    : scopeFilter === 'RW'
+                    ? `TOTAL SALDO KAS ${wargaRwName.toUpperCase()} (SEMUA RT)`
+                    : `TOTAL SALDO KAS ${wargaRtName.toUpperCase()}`}
+                </Text>
+              </View>
+              <View style={styles.saldoBadgePill}>
+                <Text style={styles.saldoBadgeText}>
+                  {scopeFilter === 'Semua' ? 'Semua Wilayah' : scopeFilter === 'RW' ? 'Gabungan RT' : 'RT Sendiri'}
+                </Text>
+              </View>
+            </View>
+
             <Text style={styles.saldoVal}>{formatRupiah(saldo)}</Text>
 
             <View style={styles.statsRow}>
@@ -468,7 +641,7 @@ export default function KasScreen({ navigation, route }) {
             />
           }
         >
-          <TransparansiIuranTable initialScope={scopeFilter} />
+          <TransparansiIuranTable key={scopeFilter} initialScope={scopeFilter} />
         </ScrollView>
       ) : (
         /* List Transaksi Kas */
@@ -738,8 +911,8 @@ export default function KasScreen({ navigation, route }) {
                     ]}
                   >
                     {(selectedKasItem.scope === 'rw' || !selectedKasItem.rt_id)
-                      ? '🏢 Kas RW 01'
-                      : '🏡 Kas RT 01'}
+                      ? `🏢 Kas ${rws.find((r) => r.id === selectedKasItem.rw_id)?.name || (selectedKasItem.rw_id ? selectedKasItem.rw_id.toUpperCase().replace('-', ' ') : wargaRwName)}`
+                      : `🏡 Kas ${rts.find((r) => r.id === selectedKasItem.rt_id)?.name || (selectedKasItem.rt_id ? selectedKasItem.rt_id.toUpperCase().replace('-', ' ') : wargaRtName)}`}
                   </Text>
                 </View>
               </View>
@@ -888,11 +1061,31 @@ const styles = StyleSheet.create({
   saldoCard: {
     marginBottom: spacing.sm
   },
+  saldoCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4
+  },
+  saldoBadgePill: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    borderWidth: 0.8,
+    borderColor: '#A7F3D0'
+  },
+  saldoBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#059669'
+  },
   saldoLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.primary,
-    letterSpacing: 0.5
+    letterSpacing: 0.5,
+    flex: 1
   },
   saldoVal: {
     fontSize: 26,
@@ -1222,42 +1415,177 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
 
-  /* SCOPE SELECTOR STYLES */
-  scopeSelectorRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: spacing.xs + 2
+  /* DROPDOWN SELECTOR STYLES */
+  dropdownContainer: {
+    marginBottom: spacing.sm,
+    zIndex: 20
   },
-  scopeSelectorBtn: {
+  dropdownLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6
+  },
+  dropdownSectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase'
+  },
+  transparansiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: '#A7F3D0'
+  },
+  transparansiBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#059669'
+  },
+  transparansiBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#059669'
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.lg,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm + 2,
+    ...shadows.sm
+  },
+  dropdownTriggerActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#FAFCFB'
+  },
+  dropdownTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderRadius: radius.sm,
-    backgroundColor: '#F1F5F9',
+    marginRight: 8
+  },
+  dropdownIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginRight: 10
+  },
+  dropdownTextWrap: {
+    flex: 1
+  },
+  dropdownSelectedTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary
+  },
+  dropdownSelectedDesc: {
+    fontSize: 10.5,
+    color: '#64748B',
+    marginTop: 2
+  },
+  dropdownChevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0'
   },
-  scopeSelectorBtnActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A'
+  dropdownChevronWrapActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0'
   },
-  scopeSelectorBtnActiveGreen: {
-    backgroundColor: '#059669',
-    borderColor: '#059669'
+  dropdownMenu: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.lg,
+    marginTop: 6,
+    overflow: 'hidden',
+    ...shadows.card
   },
-  scopeSelectorBtnActivePurple: {
-    backgroundColor: '#0F766E',
-    borderColor: '#0F766E'
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm + 2,
+    backgroundColor: colors.surface
   },
-  scopeSelectorText: {
-    fontSize: 11,
+  dropdownItemActive: {
+    backgroundColor: '#F0FDF4'
+  },
+  dropdownItemDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9'
+  },
+  dropdownItemIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginRight: 10
+  },
+  dropdownItemContent: {
+    flex: 1
+  },
+  dropdownItemTitle: {
+    fontSize: 12.5,
     fontWeight: '700',
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
-  scopeSelectorTextActive: {
-    color: colors.white
+  dropdownItemTitleActive: {
+    color: '#059669',
+    fontWeight: '800'
+  },
+  dropdownItemPill: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4
+  },
+  dropdownItemPillText: {
+    fontSize: 9,
+    fontWeight: '800'
+  },
+  dropdownItemDesc: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+    lineHeight: 14
+  },
+  checkIconWrap: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  uncheckCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1'
   },
 
   /* PENGELUARAN ALERT */
